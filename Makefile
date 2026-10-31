@@ -5,16 +5,24 @@ BATS ?= bats
 ACTIONLINT ?= actionlint
 ZIZMOR ?= zizmor
 SHELLCHECK ?= shellcheck
-CHECK_JOBS ?= 6
+CHECK_JOBS ?= 7
+LOCALIZATION_BATS := $(wildcard tests/localization*.bats)
+.PHONY: check-localization-keys
+check-localization-keys:
+	bash .github/scripts/check-localization-keys.sh
+GENERAL_BATS := $(filter-out $(LOCALIZATION_BATS),$(wildcard tests/*.bats))
 LINTERS ?= all
 LINTER_DIR ?= $(CURDIR)/.local/bin
 export PATH := $(LINTER_DIR):$(PATH)
 
-.PHONY: help check validate test test-lua test-bats lint lint-shell lint-actions lint-actionlint lint-zizmor install-linters skills-init
+.PHONY: help check check-localization validate test test-lua test-bats test-localization lint lint-shell lint-actions lint-actionlint lint-zizmor install-linters skills-init
 help:
 	@printf '%s\n' 'make check [LUA=luajit]  Run all validation, tests and linters' \
 	  'make validate            Compile Lua and validate XML/assets' \
+	  'make check-localization  Report over-limit labels in every locale' \
+	  'make check-localization-keys  Report missing English keys per locale' \
 	  'make test                Run Lua and Bats regression tests' \
+	  'make test-localization   Run localization Bats tests separately' \
 	  'make lint                Run ShellCheck, actionlint and zizmor' \
 	  'make lint-actionlint     Run actionlint only' \
 	  'make lint-zizmor         Run zizmor only' \
@@ -24,7 +32,9 @@ help:
 skills-init:
 	git submodule update --init --recursive -- .agents/skills/fs25-upstream
 check:
-	+$(MAKE) --jobs=$(CHECK_JOBS) --output-sync=target validate test lint
+	+$(MAKE) --keep-going --jobs=$(CHECK_JOBS) --output-sync=target validate test lint test-localization check-localization check-localization-keys
+check-localization:
+	LUA="$(LUA)" bash .github/scripts/check-localization-limits.sh
 validate:
 	LUA="$(LUA)" bash .github/scripts/check-mod.sh
 test: test-lua test-bats
@@ -32,7 +42,9 @@ test-lua:
 	@test "$$($(LUA) -e 'io.write(_VERSION)')" = 'Lua 5.1' || { echo 'Lua 5.1 or LuaJIT required' >&2; exit 1; }
 	$(LUA) tests/run.lua
 test-bats:
-	LUA="$(LUA)" $(BATS) tests/*.bats
+	LUA="$(LUA)" $(BATS) $(GENERAL_BATS)
+test-localization:
+	LUA="$(LUA)" $(BATS) $(LOCALIZATION_BATS)
 lint: lint-shell lint-actions
 lint-shell:
 	$(SHELLCHECK) .github/scripts/*.sh tests/*.bats

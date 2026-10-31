@@ -5,15 +5,55 @@
             <Bitmap profile="fs25_menuHeaderIconBg">
                 <Bitmap profile="fs25_menuHeaderIcon" imageSliceId="gui.icon_ingameMenu_animals"/>
             </Bitmap>
-            <Text profile="fs25_menuHeaderTitle" text="Distribution - Animal Husbandry"/>
+            <Text profile="fs25_menuHeaderTitle" text="$l10n_dr_title_husbandry" name="drTitle" id="drTitle"/>
         </GuiElement>
 
+        <!-- PAGE TABS, under the header. The title above names the mod and the page; these
+             name the section within it, on their own line, the way Husbandry Redux's page does.
+             Costs the content 46px, which the page takes by ending at -856 instead of -810,
+             the depth the User Guide page has always used, so every list keeps its height.
+
+             SIX slots, hidden when unused so the strip never re-tiles (5.37). The count MUST
+             match SmartDistribution.PAGE_TAB_MAX; tools/check_lists.py pins the two together,
+             because a cap raised without slots silently drops tabs (the 5.92b failure).
+             BACKGROUND BEFORE BUTTON in each pair: children draw in order (5.86). -->
+        <Bitmap profile="SDList" position="0px 0px" size="1480px 40px" name="drTabStrip" id="drTabStrip">
+            <Button profile="SDHeaderTabArrow" position="0px 0px" size="40px 40px"
+                    name="drTabPrev" id="drTabPrev" onClick="onPageTabPrev" />
+            <ThreePartBitmap profile="fs25_subCategorySelectorTabbedTabBg"
+                             position="48px 0px" size="200px 40px" name="drTabBg1" id="drTabBg1"/>
+            <Button profile="fs25_subCategorySelectorTabbedTab" position="48px 0px" size="200px 40px"
+                    textAutoWidth="false" name="drTabBtn1" id="drTabBtn1" onClick="onPageTab1"/>
+            <ThreePartBitmap profile="fs25_subCategorySelectorTabbedTabBg"
+                             position="256px 0px" size="200px 40px" name="drTabBg2" id="drTabBg2"/>
+            <Button profile="fs25_subCategorySelectorTabbedTab" position="256px 0px" size="200px 40px"
+                    textAutoWidth="false" name="drTabBtn2" id="drTabBtn2" onClick="onPageTab2"/>
+            <ThreePartBitmap profile="fs25_subCategorySelectorTabbedTabBg"
+                             position="464px 0px" size="200px 40px" name="drTabBg3" id="drTabBg3"/>
+            <Button profile="fs25_subCategorySelectorTabbedTab" position="464px 0px" size="200px 40px"
+                    textAutoWidth="false" name="drTabBtn3" id="drTabBtn3" onClick="onPageTab3"/>
+            <ThreePartBitmap profile="fs25_subCategorySelectorTabbedTabBg"
+                             position="672px 0px" size="200px 40px" name="drTabBg4" id="drTabBg4"/>
+            <Button profile="fs25_subCategorySelectorTabbedTab" position="672px 0px" size="200px 40px"
+                    textAutoWidth="false" name="drTabBtn4" id="drTabBtn4" onClick="onPageTab4"/>
+            <ThreePartBitmap profile="fs25_subCategorySelectorTabbedTabBg"
+                             position="880px 0px" size="200px 40px" name="drTabBg5" id="drTabBg5"/>
+            <Button profile="fs25_subCategorySelectorTabbedTab" position="880px 0px" size="200px 40px"
+                    textAutoWidth="false" name="drTabBtn5" id="drTabBtn5" onClick="onPageTab5"/>
+            <ThreePartBitmap profile="fs25_subCategorySelectorTabbedTabBg"
+                             position="1088px 0px" size="200px 40px" name="drTabBg6" id="drTabBg6"/>
+            <Button profile="fs25_subCategorySelectorTabbedTab" position="1088px 0px" size="200px 40px"
+                    textAutoWidth="false" name="drTabBtn6" id="drTabBtn6" onClick="onPageTab6"/>
+            <Button profile="SDHeaderTabArrow" position="1296px 0px" size="40px 40px"
+                    name="drTabNext" id="drTabNext" onClick="onPageTabNext" />
+        </Bitmap>
+
         <!-- left: husbandry list -->
-        <Bitmap profile="SDList" position="0px -46px" size="370px 40px">
-            <Text profile="SDHeaderLeft" position="16px 0px" size="340px 40px" text="HUSBANDRIES" />
+        <Bitmap profile="SDList" position="0px -92px" size="370px 40px">
+            <Text profile="SDHeaderLeft" position="16px 0px" size="340px 40px" text="$l10n_dr_col_husbandries" />
             <ThreePartBitmap profile="fs25_lineSeparatorBottom" position="0px 2px" />
         </Bitmap>
-        <SmoothList profile="SDList" id="assetList" position="0px -90px" size="370px 720px"
+        <SmoothList profile="SDList" id="assetList" position="0px -136px" size="370px 720px"
                     onSelectionChanged="onListSelectionChanged" focusChangeTop="nil" focusChangeBottom="nil">
             <ListItem profile="SDListItem" name="rowTemplate" size="370px 52px" onClick="onClickAsset">
                 <Bitmap position="10px 6px" size="48px 40px" name="assetIcon" imageColor="1 1 1 1" />
@@ -24,73 +64,270 @@
             </ListItem>
         </SmoothList>
 
-        <!-- timescale for every figure on this page, plus a pointer to the Overview tab, which carries the
-             per-product breakdown these columns deliberately no longer repeat -->
-        <Bitmap profile="SDList" position="390px -46px" size="1090px 40px">
-            <Text profile="SDRowCell" position="16px 0px" size="110px 40px" textSize="18px" text="Timescale"/>
+        <!-- THE SELECTOR ROW, full width and left aligned on the y=-46 row under the tab strip, which
+             is the layout Husbandry Redux's own page uses and the row every DR page had left EMPTY.
+             It used to sit in the right column level with the building list's header, which spent a
+             table row on it and left this one blank. Moving it here gives the right column that row
+             back, so the tables below start at -92 beside the building list rather than 46px lower.
+             Carries the timescale for every figure on this page, plus a pointer to the Overview tab,
+             which has the per-product breakdown these columns deliberately no longer repeat. -->
+        <Bitmap profile="SDList" position="0px -46px" size="1480px 40px">
+            <Text profile="SDRowCell" position="16px 0px" size="110px 40px" textSize="18px" text="$l10n_dr_lbl_timescale"/>
             <Bitmap profile="fs25_multiTextOptionContainer" position="130px 0px" size="380px 40px" imageColor="0 0 0 0">
                 <MultiTextOption profile="fs25_settingsMultiTextOption" id="periodOption" onClick="onPeriodChanged"
                                  textColor="0.9 0.9 0.9 1" textColorHighlight="1 1 1 1"/>
             </Bitmap>
-            <Text profile="SDHeaderLeft" position="530px 0px" size="550px 40px" textSize="14px"
-                  text="Full breakdown + supply chains: Overview tab" />
+            <Text profile="SDHeaderLeft" position="530px 0px" size="330px 40px" textSize="14px"
+                  text="$l10n_dr_lbl_overviewPointer" />
+            <!-- Key hint for the in-row mode arrows. Z is read raw by the page (no footer entry and no
+                 rebindable action), so this line is the ONLY thing that tells a player it exists. -->
+            <Text profile="SDHeaderLeft" position="870px 0px" size="210px 40px" textSize="12px"
+                  text="$l10n_dr_lbl_modeKeys" />
         </Bitmap>
 
         <!-- right: incoming products (inputs / demand) -->
         <Bitmap profile="SDList" position="390px -92px" size="1090px 40px">
-            <Text profile="SDHeaderLeft" position="44px 0px"  size="240px 40px" text="INCOMING PRODUCTS" />
-            <Text profile="SDHeaderLeft" position="292px 0px" size="280px 40px" text="HELD (CAP)" />
-            <Text profile="SDHeaderLeft" position="580px 0px" size="150px 40px" text="RECEIVED" />
-            <Text profile="SDHeaderLeft" position="738px 0px" size="150px 40px" text="CONSUMED" />
-            <Text profile="SDHeaderLeft" position="894px 0px" size="196px 40px" text="DISTRIBUTION" />
+            <Text profile="SDHeaderLeft" position="44px 0px"  size="163px 40px" textSize="11px" text="$l10n_dr_col_incomingProducts" />
+            <Text profile="SDHeaderLeft" position="215px 0px" size="100px 40px" textSize="11px" text="$l10n_dr_col_storageType" />
+            <Text profile="SDHeaderLeft" position="323px 0px" size="300px 40px" textSize="11px" text="$l10n_dr_col_storage" />
+            <Text profile="SDHeaderCenter" position="674px 0px" size="110px 40px" textSize="11px" text="$l10n_dr_col_received" />
+            <Text profile="SDHeaderCenter" position="792px 0px" size="110px 40px" textSize="11px" text="$l10n_dr_col_consumed" />
+            <Text profile="SDHeaderLeft" position="910px 0px" size="180px 40px" textSize="11px" text="$l10n_dr_col_distribution" />
             <ThreePartBitmap profile="fs25_lineSeparatorBottom" position="0px 2px" />
         </Bitmap>
-        <GuiElement profile="SDList" position="390px -136px" size="1090px 280px">
+        <GuiElement profile="SDList" position="390px -136px" size="1090px 280px" id="inputSection">
             <SmoothList profile="SDList" id="inputList" position="0px 0px" size="1090px 280px"
                         onSelectionChanged="onInputSelectionChanged" focusChangeTop="nil" focusChangeBottom="nil">
-                <ListItem profile="SDListItem" name="rowTemplate" size="1090px 52px" onClick="onClickInputRow">
-                    <Bitmap position="12px 14px" size="24px 24px" name="fillIcon" imageColor="1 1 1 1" />
-                    <Text profile="SDRowCell" position="44px 0px"  size="240px 52px" textSize="16px" name="fillName" />
-                    <Text profile="SDRowCell" position="292px 0px" size="280px 52px" textSize="15px" name="heldText" />
-                    <Text profile="SDRowCell" position="580px 0px" size="150px 52px" textSize="16px" name="recvText" />
-                    <Text profile="SDRowCell" position="738px 0px" size="150px 52px" textSize="16px" name="consumedText" />
-                    <Text profile="SDRowCell" position="894px 0px" size="196px 52px" textSize="15px" name="statusText" />
+                <ListItem profile="SDListItemStats" name="rowTemplate" size="1090px 42px" onClick="onClickInputRow">
+                    <!-- full-width overlay for the "+N blocked" notice row; hidden on every normal row -->
+                    <Text profile="SDRowCell" position="44px 0px" size="1030px 42px" textSize="12px" name="noticeText" visible="false" />
+                    <Bitmap position="12px 9px" size="24px 24px" name="fillIcon" imageColor="1 1 1 1" />
+                    <Text profile="SDRowCell" position="44px 0px"  size="163px 42px" textSize="12px" name="fillName" />
+                    <Text profile="SDRowCell" position="215px 0px" size="100px 42px" textSize="12px" name="typeText" />
+                    <Bitmap position="323px 4px" size="300px 18px" name="barBg"
+                            imageFilename="dataS/menu/base/graph_pixel.png" imageColor="0.13 0.14 0.16 0.85">
+                        <Bitmap position="0px 0px" size="300px 18px" name="barOthers"
+                                imageFilename="dataS/menu/base/graph_pixel.png" imageColor="0.72 0.20 0.17 0.95" />
+                        <Bitmap position="0px 0px" size="300px 18px" name="barSelf"
+                                imageFilename="dataS/menu/base/graph_pixel.png" imageColor="0.31 0.72 0.31 1" />
+                        <Bitmap position="0px 0px" size="2px 18px" name="barReserve"
+                                imageFilename="dataS/menu/base/graph_pixel.png" imageColor="0.16 0.32 0.92 1" />
+                        <Bitmap position="0px 0px" size="2px 18px" name="barTarget"
+                                imageFilename="dataS/menu/base/graph_pixel.png" imageColor="0.25 0.72 1 1" />
+                        <Bitmap position="0px 0px" size="2px 18px" name="barMax"
+                                imageFilename="dataS/menu/base/graph_pixel.png" imageColor="1 0.62 0.10 1" />
+                    </Bitmap>
+                    <Text profile="SDBarLabel"      position="323px 23px" size="180px 15px" name="barHeld" />
+                    <Text profile="SDBarLabelRight" position="443px 23px" size="180px 15px" name="barCap" />
+                    <Text profile="SDRowCellCenter" position="674px 0px" size="110px 42px" textSize="12px" name="recvText" />
+                    <Text profile="SDRowCellCenter" position="792px 0px" size="110px 42px" textSize="12px" name="consumedText" />
+                    <Text profile="SDRowCell" position="910px 0px" size="180px 42px" textSize="12px" name="statusText" />
                 </ListItem>
             </SmoothList>
-            <ThreePartBitmap profile="fs25_listSliderBox" position="12px 0px" size="12px 280px" with="anchorTopRight">
+            <ThreePartBitmap profile="fs25_listSliderBox" position="12px 0px" size="12px 280px" with="anchorTopRight" name="sliderBox">
                 <Slider profile="fs25_listSlider" size="6px 272px" dataElementId="inputList" id="inputSlider" />
             </ThreePartBitmap>
         </GuiElement>
 
         <!-- outgoing products. DISTRIBUTED is everything that left: distributed + stored/moved + sold,
              with the sale value in brackets. -->
-        <Bitmap profile="SDList" position="390px -426px" size="1090px 40px">
-            <Text profile="SDHeaderLeft" position="44px 0px"  size="170px 40px" text="OUTGOING PRODUCTS" />
-            <Text profile="SDHeaderLeft" position="224px 0px" size="250px 40px" text="HELD (CAP)" />
-            <Text profile="SDHeaderLeft" position="484px 0px" size="100px 40px" text="PRODUCED" />
-            <Text profile="SDHeaderLeft" position="594px 0px" size="130px 40px" text="DISTRIBUTED" />
-            <Text profile="SDHeaderLeft" position="734px 0px" size="220px 40px" text="OUTPUT MODE" />
-            <Text profile="SDHeaderLeft" position="964px 0px" size="126px 40px" text="STATUS" />
+
+        <!-- ===================== THE ANIMAL PANEL (API v4 providers only) =====================
+             SHIPS HIDDEN, and the two lists above and below keep their ORIGINAL heights until a
+             provider registers. So a stock install without a panel provider renders exactly as it
+             always has, and only registerHusbandryPanel reflows anything (see reflowForPanel).
+
+             Everything here is positioned inside the container, so the reflow moves ONE element
+             and the whole panel travels with it.
+
+             Three blocks, separated by hairlines: ANIMALS (a count and two bars), FEED (the food
+             factor, stacked by group for a PARALLEL animal and tier-marked for a SERIAL one), and
+             HERD VALUE (now against what the same herd would fetch at peak age and full health).
+
+             The six segment / swatch colours are set in Lua, not here, so the palette lives in ONE
+             place  - it is validated as a set against this exact track colour and re-stepping one
+             hue in isolation would break that. -->
+        <Bitmap profile="SDList" position="390px -398px" size="1090px 40px" id="panelHeader" name="panelHeader" visible="false">
+            <Text profile="SDHeaderLeft" position="16px 0px" size="700px 40px" textSize="11px"
+                  text="$l10n_dr_col_animalPanel" />
             <ThreePartBitmap profile="fs25_lineSeparatorBottom" position="0px 2px" />
         </Bitmap>
-        <GuiElement profile="SDList" position="390px -470px" size="1090px 340px">
-            <SmoothList profile="SDList" id="outputList" position="0px 0px" size="1090px 340px"
+
+        <GuiElement profile="SDList" position="390px -442px" size="1090px 146px" id="animalPanel" name="animalPanel" visible="false">
+
+            <!--  - block A: ANIMALS  - -->
+            <Text profile="SDBarLabel" position="16px 128px"  size="234px 14px" textSize="11px" name="apHerdLabel" />
+            <Text profile="SDBarLabel" position="16px 96px" size="118px 30px" textSize="24px" name="apCount" />
+            <!-- BESIDE THE COUNT, because that is the number it is about: whether to
+                 sell to make room for births. 11.11 measured what a full pen costs -
+                 it destroys numAnimals offspring AND the gestation that made them,
+                 permanently, every cycle - and nothing else on this strip says it.
+                 108px at 11px is about 19 characters, so it wraps to two lines; the
+                 provider writes to a 36-character budget.
+                 16+118=134 | 142+108=250, the block's own right edge. -->
+            <Text profile="SDBarLabel" position="142px 96px" size="108px 30px" textSize="11px" textMaxNumLines="3" name="apHerdAdvice" />
+            <Bitmap position="16px 84px" size="230px 8px" name="apCapBg"
+                    imageFilename="dataS/menu/base/graph_pixel.png" imageColor="0.13 0.14 0.16 0.85" />
+            <Bitmap position="16px 84px" size="230px 8px" name="apCapFill"
+                    imageFilename="dataS/menu/base/graph_pixel.png" imageColor="0.42 0.45 0.50 1" />
+            <Text profile="SDBarLabel" position="16px 64px" size="234px 14px" textSize="11px" name="apHealthLabel" />
+            <Bitmap position="16px 46px" size="230px 16px" name="apHealthBg"
+                    imageFilename="dataS/menu/base/graph_pixel.png" imageColor="0.13 0.14 0.16 0.85" />
+            <Bitmap position="16px 46px" size="230px 16px" name="apHealthFill"
+                    imageFilename="dataS/menu/base/graph_pixel.png" imageColor="0.31 0.72 0.31 1" />
+            <!-- PRODUCTIVITY, the base game's OWN headline for a husbandry
+                 (globalProductionFactor x productionFactor, exactly as
+                 getConditionInfos computes it). It is NOT the food factor: food is
+                 one input to it, so a barn can be perfectly fed and still sit at 15%
+                 for a reason nothing else on this strip would show. Same bar idiom
+                 and the same status bands as HEALTH above it. The base game HIDES
+                 it for horses and pigs, so the provider flags that and it reads
+                 "n/a" rather than a confident zero. -->
+            <Text profile="SDBarLabel" position="16px 26px" size="234px 14px" textSize="11px" name="apProdLabel" />
+            <Bitmap position="16px 8px" size="230px 16px" name="apProdBg"
+                    imageFilename="dataS/menu/base/graph_pixel.png" imageColor="0.13 0.14 0.16 0.85" />
+            <Bitmap position="16px 8px" size="230px 16px" name="apProdFill"
+                    imageFilename="dataS/menu/base/graph_pixel.png" imageColor="0.31 0.72 0.31 1" />
+
+            <!-- UNDER THE FEED GRAPHIC: what to put in the trough next. It reads the
+                 same groups the bar above it draws, so the sentence and the bar
+                 cannot disagree about which tier is short. 480px at 11px is about
+                 80 characters, which is why this one needs no wrapping.
+                 286+480=766, level with the feed block above it. -->
+            <Text profile="SDBarLabel" position="286px 10px" size="480px 16px" textSize="11px" name="apFeedAdvice" />
+
+            <Bitmap position="270px 8px" size="1px 134px" name="apSep1"
+                    imageFilename="dataS/menu/base/graph_pixel.png" imageColor="1 1 1 0.16" />
+
+            <!--  - block B: FEED  - -->
+            <Text profile="SDBarLabel" position="286px 126px"  size="480px 14px" textSize="11px" name="apFeedLabel" />
+            <Text profile="SDBarLabel" position="286px 106px" size="480px 18px" textSize="13px" name="apFeedTitle" />
+            <Bitmap position="286px 80px" size="470px 22px" name="apFeedBg"
+                    imageFilename="dataS/menu/base/graph_pixel.png" imageColor="0.13 0.14 0.16 0.85">
+                <Bitmap position="0px 0px" size="0px 22px" name="apSeg1" imageFilename="dataS/menu/base/graph_pixel.png" />
+                <Bitmap position="0px 0px" size="0px 22px" name="apSeg2" imageFilename="dataS/menu/base/graph_pixel.png" />
+                <Bitmap position="0px 0px" size="0px 22px" name="apSeg3" imageFilename="dataS/menu/base/graph_pixel.png" />
+                <Bitmap position="0px 0px" size="0px 22px" name="apSeg4" imageFilename="dataS/menu/base/graph_pixel.png" />
+                <Bitmap position="0px 0px" size="0px 22px" name="apSeg5" imageFilename="dataS/menu/base/graph_pixel.png" />
+                <Bitmap position="0px 0px" size="0px 22px" name="apSeg6" imageFilename="dataS/menu/base/graph_pixel.png" />
+                <Bitmap position="0px 0px" size="2px 22px" name="apTier1" imageFilename="dataS/menu/base/graph_pixel.png" imageColor="1 1 1 0.55" />
+                <Bitmap position="0px 0px" size="2px 22px" name="apTier2" imageFilename="dataS/menu/base/graph_pixel.png" imageColor="1 1 1 0.55" />
+                <Bitmap position="0px 0px" size="2px 22px" name="apTier3" imageFilename="dataS/menu/base/graph_pixel.png" imageColor="1 1 1 0.55" />
+                <Bitmap position="0px 0px" size="2px 22px" name="apTier4" imageFilename="dataS/menu/base/graph_pixel.png" imageColor="1 1 1 0.55" />
+                <Bitmap position="0px 0px" size="2px 22px" name="apTier5" imageFilename="dataS/menu/base/graph_pixel.png" imageColor="1 1 1 0.55" />
+                <Bitmap position="0px 0px" size="2px 22px" name="apTier6" imageFilename="dataS/menu/base/graph_pixel.png" imageColor="1 1 1 0.55" />
+            </Bitmap>
+
+            <Bitmap position="286px 58px" size="12px 12px" name="apLegSw1" imageFilename="dataS/menu/base/graph_pixel.png" />
+            <Text profile="SDBarLabel" position="304px 56px" size="140px 16px" textSize="11px" name="apLegTx1" />
+            <Bitmap position="446px 58px" size="12px 12px" name="apLegSw2" imageFilename="dataS/menu/base/graph_pixel.png" />
+            <Text profile="SDBarLabel" position="464px 56px" size="140px 16px" textSize="11px" name="apLegTx2" />
+            <Bitmap position="606px 58px" size="12px 12px" name="apLegSw3" imageFilename="dataS/menu/base/graph_pixel.png" />
+            <Text profile="SDBarLabel" position="624px 56px" size="140px 16px" textSize="11px" name="apLegTx3" />
+            <Bitmap position="286px 34px" size="12px 12px" name="apLegSw4" imageFilename="dataS/menu/base/graph_pixel.png" />
+            <Text profile="SDBarLabel" position="304px 32px" size="140px 16px" textSize="11px" name="apLegTx4" />
+            <Bitmap position="446px 34px" size="12px 12px" name="apLegSw5" imageFilename="dataS/menu/base/graph_pixel.png" />
+            <Text profile="SDBarLabel" position="464px 32px" size="140px 16px" textSize="11px" name="apLegTx5" />
+            <Bitmap position="606px 34px" size="12px 12px" name="apLegSw6" imageFilename="dataS/menu/base/graph_pixel.png" />
+            <Text profile="SDBarLabel" position="624px 32px" size="140px 16px" textSize="11px" name="apLegTx6" />
+
+            <Bitmap position="778px 8px" size="1px 134px" name="apSep2"
+                    imageFilename="dataS/menu/base/graph_pixel.png" imageColor="1 1 1 0.16" />
+
+            <!--  - block C: HERD VALUE  - -->
+            <Text profile="SDBarLabel" position="794px 128px" size="280px 14px" textSize="11px" name="apValueLabel" />
+            <Text profile="SDBarLabel" position="794px 104px" size="280px 22px" textSize="16px" name="apValueMain" />
+            <Bitmap position="794px 82px" size="280px 20px" name="apValueBg"
+                    imageFilename="dataS/menu/base/graph_pixel.png" imageColor="0.13 0.14 0.16 0.85" />
+            <Bitmap position="794px 82px" size="280px 20px" name="apValueFill"
+                    imageFilename="dataS/menu/base/graph_pixel.png" imageColor="0.10 0.62 0.44 1" />
+            <Text profile="SDBarLabel" position="794px 66px" size="280px 14px" textSize="11px" name="apValueOf" />
+            <Text profile="SDBarLabel" position="794px 50px" size="280px 14px" textSize="11px" name="apValueNote" />
+
+            <!--  - block D: PROFIT  -
+                 THE BREAKDOWN SITS DIRECTLY ABOVE THE HEADLINE IT EXPLAINS. It first went in the
+                 dead strip under blocks A and B, which is where the space was; on screen it read
+                 as a stray line under HEALTH with no visible connection to the figure it
+                 decomposes. Two rows of two, in the herd-value column, so the four terms and the
+                 total they make are one block.
+                 The whole of block C was re-pitched by a few px to buy the two rows; nothing in
+                 blocks A or B moved, and the strip is still 146px.
+                 794 + 140 = 934 | 934 + 140 = 1074, level with the column above. -->
+            <!-- THE HEADLINE LEADS AND THE BREAKDOWN FOLLOWS. It sat UNDER its own
+                 arithmetic for one build; a total belongs at the top of the terms
+                 that make it, the way every other figure on this strip does.
+                 The label says EST. FORECAST because that is exactly what the block
+                 is: today's rates at today's prices projected forward, not a
+                 measurement of anything that has happened. 190px at 11px is about
+                 34 characters and the longest string is 27.
+                 794 + 190 = 984 | 984 + 90 = 1074, level with the column above. -->
+            <Text profile="SDBarLabel" position="794px 32px" size="190px 16px" textSize="11px" name="apProfitLabel" />
+            <Text profile="SDBarLabel" position="984px 32px" size="90px 16px"  textSize="13px" name="apProfitMain" />
+            <Text profile="SDBarLabel" position="794px 17px" size="140px 14px" textSize="11px" name="apProfitP1" />
+            <Text profile="SDBarLabel" position="934px 17px" size="140px 14px" textSize="11px" name="apProfitP2" />
+            <Text profile="SDBarLabel" position="794px 2px"  size="140px 14px" textSize="11px" name="apProfitP3" />
+            <Text profile="SDBarLabel" position="934px 2px"  size="140px 14px" textSize="11px" name="apProfitP4" />
+        </GuiElement>
+
+        <Bitmap profile="SDList" position="390px -426px" size="1090px 40px" id="outputHeader">
+            <Text profile="SDHeaderLeft" position="44px 0px"  size="155px 40px" textSize="11px" text="$l10n_dr_col_outgoingProducts" />
+            <Text profile="SDHeaderLeft" position="207px 0px" size="300px 40px" textSize="11px" text="$l10n_dr_col_storage" />
+            <!-- the three flow columns each gave up width (100->84, 95->79, 115->87) to fund the in-row
+                 mode arrows; the MODE cell keeps its full 215px of text, so nothing truncates. -->
+            <Text profile="SDHeaderCenter" position="517px 0px" size="79px 40px"  textSize="11px" text="$l10n_dr_col_produced" />
+            <Text profile="SDHeaderCenter" position="604px 0px" size="87px 40px"  textSize="11px" text="$l10n_dr_col_distributed" />
+            <Text profile="SDHeaderLeft" position="699px 0px" size="275px 40px" textSize="11px" text="$l10n_dr_col_outputMode" />
+            <Text profile="SDHeaderLeft" position="992px 0px" size="98px 40px" textSize="11px" text="$l10n_dr_col_status" />
+            <ThreePartBitmap profile="fs25_lineSeparatorBottom" position="0px 2px" />
+        </Bitmap>
+        <GuiElement profile="SDList" position="390px -470px" size="1090px 386px" id="outputSection">
+            <SmoothList profile="SDList" id="outputList" position="0px 0px" size="1090px 386px"
                         onSelectionChanged="onListSelectionChanged" focusChangeTop="nil" focusChangeBottom="nil">
-                <ListItem profile="SDListItem" name="rowTemplate" size="1090px 52px" onClick="onClickOutputRow">
-                    <Bitmap position="12px 14px" size="24px 24px" name="fillIcon" imageColor="1 1 1 1" />
-                    <Text profile="SDRowCell" position="44px 0px"  size="170px 52px" textSize="16px" name="fillName" />
+                <ListItem profile="SDListItemStats" name="rowTemplate" size="1090px 42px" onClick="onClickOutputRow">
+                    <!-- full-width overlay for the "+N blocked" notice row; hidden on every normal row -->
+                    <Text profile="SDRowCell" position="44px 0px" size="1030px 42px" textSize="12px" name="noticeText" visible="false" />
+                    <Bitmap position="12px 9px" size="24px 24px" name="fillIcon" imageColor="1 1 1 1" />
+                    <Text profile="SDRowCell" position="44px 0px"  size="155px 42px" textSize="12px" name="fillName" />
                     <!-- HELD sits next to the product and takes the widest slot: it is the only cell that
                          carries three figures ("473 L (150,000 L) + 3,000 L (3p)") and it was truncating. -->
-                    <Text profile="SDRowCell" position="224px 0px" size="250px 52px" textSize="15px" name="heldText" />
-                    <Text profile="SDRowCell" position="484px 0px" size="100px 52px" textSize="16px" name="prodText" />
-                    <Text profile="SDRowCell" position="594px 0px" size="130px 52px" textSize="16px" name="distText" />
-                    <!-- mode AND its sell timing share this cell ("Distribute + Sell - Sell Immediately") -->
-                    <Text profile="SDRowCell" position="734px 0px" size="220px 52px" textSize="14px" name="modeText" />
-                    <Text profile="SDRowCell" position="964px 0px" size="126px 52px" textSize="14px" name="statusText" />
+                    <Bitmap position="207px 4px" size="300px 18px" name="barBg"
+                            imageFilename="dataS/menu/base/graph_pixel.png" imageColor="0.13 0.14 0.16 0.85">
+                        <Bitmap position="0px 0px" size="300px 18px" name="barOthers"
+                                imageFilename="dataS/menu/base/graph_pixel.png" imageColor="0.72 0.20 0.17 0.95" />
+                        <Bitmap position="0px 0px" size="300px 18px" name="barSelf"
+                                imageFilename="dataS/menu/base/graph_pixel.png" imageColor="0.31 0.72 0.31 1" />
+                        <Bitmap position="0px 0px" size="2px 18px" name="barReserve"
+                                imageFilename="dataS/menu/base/graph_pixel.png" imageColor="0.16 0.32 0.92 1" />
+                        <Bitmap position="0px 0px" size="2px 18px" name="barTarget"
+                                imageFilename="dataS/menu/base/graph_pixel.png" imageColor="0.25 0.72 1 1" />
+                        <Bitmap position="0px 0px" size="2px 18px" name="barMax"
+                                imageFilename="dataS/menu/base/graph_pixel.png" imageColor="1 0.62 0.10 1" />
+                    </Bitmap>
+                    <Text profile="SDBarLabel"      position="207px 23px" size="180px 15px" name="barHeld" />
+                    <Text profile="SDBarLabelRight" position="327px 23px" size="180px 15px" name="barCap" />
+                    <!-- "+3 [pallet]" is whole pallets standing on this building's own pad, drawn over the
+                         right end of the track. SIBLINGS of barBg, not children, so they still show on a
+                         building whose internal store has no capacity to draw a track for (a beehive).
+                         Declared AFTER barBg so they paint on top of it. -->
+                    <Bitmap position="407px 4px" size="100px 18px" name="barPalletPlate" visible="false"
+                            imageFilename="dataS/menu/base/graph_pixel.png" imageColor="0.10 0.11 0.13 0.78" />
+                    <Text profile="SDBarPalletCount" position="411px 4px" size="60px 18px" textSize="12px"
+                          name="barPalletCount" visible="false" />
+                    <Bitmap position="481px 5px" size="26px 16px" name="barPalletIcon" visible="false"
+                            imageColor="1 1 1 1" imageSize="512 512" imageUVs="105px 322px 303px 190px" />
+                    <Text profile="SDRowCellCenter" position="517px 0px" size="79px 42px" textSize="12px" name="prodText" />
+                    <Text profile="SDRowCellCenter" position="604px 0px" size="87px 42px" textSize="12px" name="distText" />
+                    <!-- mode AND its sell timing share this cell ("Distribute + Sell - Sell Immediately"),
+                         with arrows either side to step it both ways in place. See the Silos page for why
+                         a click on an arrow does not also re-select the row. -->
+                    <Button profile="fs25_multiTextOptionLeft"  position="699px 0px" name="modePrev" onClick="onModePrev" />
+                    <Text   profile="SDRowCell"       position="729px 0px" size="215px 42px" textSize="12px" name="modeText" />
+                    <Button profile="SDRowArrowRight" position="948px 0px" name="modeNext" onClick="onModeNext" />
+                    <Text profile="SDRowCell" position="992px 0px" size="98px 42px" textSize="12px" name="statusText" />
                 </ListItem>
             </SmoothList>
-            <ThreePartBitmap profile="fs25_listSliderBox" position="12px 0px" size="12px 340px" with="anchorTopRight">
-                <Slider profile="fs25_listSlider" size="6px 332px" dataElementId="outputList" id="outputSlider" />
+            <ThreePartBitmap profile="fs25_listSliderBox" position="12px 0px" size="12px 386px" with="anchorTopRight" name="sliderBox">
+                <Slider profile="fs25_listSlider" size="6px 378px" dataElementId="outputList" id="outputSlider" />
             </ThreePartBitmap>
         </GuiElement>
     </GuiElement>

@@ -23,11 +23,28 @@ function DistributionModeEvent.emptyNew()
     return Event.new(DistributionModeEvent_mt)
 end
 
-function DistributionModeEvent.new(placeable, fillTypeIndex, mode)
+function DistributionModeEvent.new(placeable, fillTypeIndex, mode, role)
     local self = DistributionModeEvent.emptyNew()
     self.placeable = placeable
     self.fillTypeIndex = fillTypeIndex
     self.mode = mode
+    -- The SENDER's uid for this placeable, carried BESIDE the node object. Two independent reasons:
+    --  * a joining client loads player-built placeables ASYNCHRONOUSLY, so readNodeObject can hand
+    --    back nil during the join replay and run() then dropped the override in silence -- this is
+    --    why output modes came back as defaults after a rejoin;
+    --  * a client's own uid for a building is a locally minted MD5 that the server has never seen
+    --    (see the _serverUidById note above getUid in SmartDistribution.lua), so the authoritative
+    --    string has to travel with the event rather than be re-derived by the receiver.
+    --
+    -- ROLE: a few buildings are two things at once (a silo AND a pallet store), and each half keeps its
+    -- own modes under its own key. The role travels as its own field rather than being inferred from the
+    -- uid string, because the SERVER deliberately re-derives its own uid from the placeable rather than
+    -- trusting a client's -- so it needs to know WHICH HALF was meant, not just what the client called it.
+    self.role = role or ""
+    self.uid = ""
+    if placeable ~= nil and SmartDistribution ~= nil and SmartDistribution.roleUid ~= nil then
+        self.uid = SmartDistribution.roleUid(placeable, role) or ""
+    end
     return self
 end
 
@@ -35,12 +52,16 @@ function DistributionModeEvent:writeStream(streamId, connection)
     NetworkUtil.writeNodeObject(streamId, self.placeable)
     streamWriteUIntN(streamId, self.fillTypeIndex, FillTypeManager.SEND_NUM_BITS)
     streamWriteUIntN(streamId, self.mode, DistributionModeEvent.MODE_NUM_BITS)
+    streamWriteString(streamId, self.uid or "")
+    streamWriteString(streamId, self.role or "")
 end
 
 function DistributionModeEvent:readStream(streamId, connection)
     self.placeable = NetworkUtil.readNodeObject(streamId)
     self.fillTypeIndex = streamReadUIntN(streamId, FillTypeManager.SEND_NUM_BITS)
     self.mode = streamReadUIntN(streamId, DistributionModeEvent.MODE_NUM_BITS)
+    self.uid = streamReadString(streamId)
+    self.role = streamReadString(streamId)
     self:run(connection)
 end
 
@@ -49,17 +70,41 @@ function DistributionModeEvent:run(connection)
     if not connection:getIsServer() then
         g_server:broadcastEvent(self, false, connection)
     end
-    if self.placeable ~= nil and SmartDistribution ~= nil and SmartDistribution.applyAssetMode ~= nil then
-        SmartDistribution.applyAssetMode(self.placeable, self.fillTypeIndex, self.mode, true) -- noEventSend
+    if SmartDistribution == nil then return end
+    -- A CLIENT prefers the uid STRING: it is the server's own key, it needs no node resolution, and
+    -- the placeable may not have finished loading yet. The SERVER prefers the placeable and derives
+    -- its own uid from it, so a client can never write state under a key the server does not own.
+    if connection ~= nil and connection:getIsServer()
+       and self.uid ~= nil and self.uid ~= "" and SmartDistribution.setAssetMode ~= nil then
+        -- SELF-HEALING IDENTITY: this event carries BOTH the server's uid string and the placeable, so it
+        -- can teach the client that building's server-side id directly -- independent of the bulk uid map
+        -- and of when that map happens to arrive.
+        if self.placeable ~= nil and NetworkUtil ~= nil and NetworkUtil.getObjectId ~= nil
+           and SmartDistribution.setServerUid ~= nil then
+            local oid = NetworkUtil.getObjectId(self.placeable)
+            -- baseUidOf is LOAD-BEARING here: this teaches the client "networkObjectId -> that
+            -- building's uid". Handing it a ROLE uid would poison the identity of every OTHER role of
+            -- the same building, and of the building itself.
+            local baseUid = (SmartDistribution.baseUidOf ~= nil) and SmartDistribution.baseUidOf(self.uid) or self.uid
+            if oid ~= nil and oid ~= 0 then SmartDistribution.setServerUid(oid, baseUid) end
+        end
+        SmartDistribution.setAssetMode(self.uid, self.fillTypeIndex, self.mode)
+        -- An override arriving now can change what a production's mode resolves to, and the join replay
+        -- can land after something has already read (and cached) a derived answer. Same race as the uid
+        -- map; same remedy.
+        if SmartDistribution.invalidateSeededVModes ~= nil then SmartDistribution.invalidateSeededVModes() end
+    elseif self.placeable ~= nil and SmartDistribution.applyAssetMode ~= nil then
+        local role = (self.role ~= nil and self.role ~= "") and self.role or nil
+        SmartDistribution.applyAssetMode(self.placeable, self.fillTypeIndex, self.mode, true, role) -- noEventSend
     end
 end
 
-function DistributionModeEvent.sendEvent(placeable, fillTypeIndex, mode, noEventSend)
+function DistributionModeEvent.sendEvent(placeable, fillTypeIndex, mode, noEventSend, role)
     if noEventSend == nil or noEventSend == false then
         if g_server ~= nil then
-            g_server:broadcastEvent(DistributionModeEvent.new(placeable, fillTypeIndex, mode))
+            g_server:broadcastEvent(DistributionModeEvent.new(placeable, fillTypeIndex, mode, role))
         elseif g_client ~= nil then
-            g_client:getServerConnection():sendEvent(DistributionModeEvent.new(placeable, fillTypeIndex, mode))
+            g_client:getServerConnection():sendEvent(DistributionModeEvent.new(placeable, fillTypeIndex, mode, role))
         end
     end
 end

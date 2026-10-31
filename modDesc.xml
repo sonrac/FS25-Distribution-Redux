@@ -1,9 +1,9 @@
 <?xml version="1.0" encoding="utf-8" standalone="no"?>
 <!-- descVersion 110. This mod uses only launch-era schema, so a lower value also
      loads; 110 matches the current patch and silences the version notice. -->
-<modDesc descVersion="110">
+<modDesc descVersion="111">
     <author>Bones</author>
-    <version>1.1.0.0</version>
+    <version>1.1.0.5</version>
 
     <title>
         <en>Distribution Redux</en>
@@ -30,6 +30,14 @@ Designed for the base game and compatible with most standard mods. Some custom b
 Feedback/Issues: https://github.com/Bones50/FS25-Distribution-Redux
 
 Changelog
+
+v1.1.0.0
+1. Over 39 Bug Fixes (see GitHub Readme for full details).
+2. Over 17 QoL Additions (see GitHub Readme for full details).
+3. Compatibility added for many mods, and the code strengthened to improve mod compatibility overall (see GitHub Readme for full details).
+4. Added an Overview tab that allows you to see all distribution activity, and distribution settings, for all buildings in one place (includes filters, and can be set to show all sources and productions contributing to a specific end product)
+5. Added Advanced Input and Output management (block, prioritise, reserve stock, fill target, max in) for all buildings.
+6. Added the ability to move and sort product between storages (i.e. Silos, Pallet Stores etc)
 
 v1.0.0.2
 - Buildings can now be renamed: all buildings in the distribution network can be given a custom name from the base-game construction menu (silos, sheds and pits included, which the game does not normally allow). Distribution Redux uses that name throughout its menu, with the original building name shown beneath it as a reference.
@@ -65,6 +73,14 @@ Feedback/Issues: https://github.com/Bones50/FS25-Distribution-Redux
 
 Changelog
 
+v1.1.0.0
+1. Über 39 Fehlerbehebungen (vollständige Details in der GitHub-Readme).
+2. Über 17 Komfortverbesserungen (vollständige Details in der GitHub-Readme).
+3. Kompatibilität für viele Mods ergänzt und der Code allgemein robuster gemacht, um die Mod-Kompatibilität insgesamt zu verbessern (vollständige Details in der GitHub-Readme).
+4. Neuer Reiter "Übersicht": zeigt die gesamte Verteilungsaktivität sowie die Verteilungseinstellungen aller Gebäude an einem Ort (mit Filtern; kann außerdem alle Quellen und Produktionen anzeigen, die zu einem bestimmten Endprodukt beitragen).
+5. Erweiterte Eingangs- und Ausgangsverwaltung für alle Gebäude (sperren, priorisieren, Bestand reservieren, Füllziel, max. Eingang).
+6. Produkte können jetzt zwischen Lagern verschoben und sortiert werden (z. B. Silos, Palettenlager usw.).
+
 v1.0.0.2
 - Gebäude können jetzt umbenannt werden: Alle Gebäude im Verteilungsnetz lassen sich über das Baumenü des Grundspiels mit einem eigenen Namen versehen (auch Silos, Schuppen und Gruben, was das Spiel sonst nicht erlaubt). Distribution Redux verwendet diesen Namen im gesamten Menü und zeigt den ursprünglichen Gebäudenamen darunter als Referenz an.
 - Fehler behoben, bei dem Misthaufen und Güllegrube jeweils das Produkt des anderen anzeigten: Der Misthaufen zeigt nun nur noch Mist, die Güllegrube nur noch Gülle.
@@ -77,20 +93,115 @@ v1.0.0.1
 - Neuer Ausgabemodus "Hold Internal": Das Schüttgut einer Produktion im Gebäude behalten, statt automatisch Paletten zu erzeugen.
 - Manuelles Erzeugen von Paletten aus dem gehaltenen Bestand eines "Hold Internal"-Ausgangs - ein Dialog erlaubt die Auswahl von Palettentyp und Anzahl (durch den Bestand begrenzt), verfügbar im Distribution-Redux-Menü und im Produktionsbildschirm des Grundspiels.
 ]]></de>
+        <fr><![CDATA[
+Distribution Redux
+Remplace le système de distribution standard de Farming Simulator 25 par un réseau logistique plus intelligent, piloté par la demande.
+Distribution Redux déplace automatiquement les ressources entre les productions, les élevages, les silos et les bâtiments de stockage en fonction de la demande réelle. Il privilégie la source disponible la plus proche, prend en charge la distribution automatique de l’alimentation animale, de la paille et de l’eau, et vous offre un contrôle total sur la gestion de chaque sortie.
+
+Fonctionnalités
+
+* Aucun objet plaçable supplémentaire requis
+* Fonctionne avec les productions, bâtiments de stockage, silos et élevages existants
+* Distribution pilotée par la demande et basée sur la consommation réelle
+* Approvisionnement automatique en aliments pour animaux, paille et eau
+* Plusieurs modes de sortie : Conserver, Distribuer, Vendre, Stocker et combinaisons de ces modes
+* Mode Conserver (interne) : conserve les produits en vrac dans une production et génère des palettes à la demande
+* Distribution basée sur la proximité ou à l’échelle de toute l’exploitation
+* Configuration par bâtiment et par produit
+* Compatible avec le multijoueur
+
+Compatibilité
+Conçu pour le jeu de base et compatible avec la plupart des mods standards. Certains bâtiments personnalisés peuvent nécessiter une prise en charge supplémentaire.
+
+Commentaires et signalement de problèmes : https://github.com/Bones50/FS25-Distribution-Redux
+
+Historique des versions
+
+v1.1.0.0
+1. Plus de 39 corrections de bugs (voir le README GitHub pour tous les détails).
+2. Plus de 17 améliorations du confort de jeu (voir le README GitHub pour tous les détails).
+3. Compatibilité ajoutée avec de nombreux mods et code renforcé afin d’améliorer globalement la compatibilité avec les mods (voir le README GitHub pour tous les détails).
+4. Ajout d’un onglet Aperçu permettant de consulter toute l’activité de distribution ainsi que les paramètres de distribution de tous les bâtiments depuis un seul endroit. Il comprend des filtres et peut afficher toutes les sources et productions contribuant à l’obtention d’un produit final donné.
+5. Ajout d’une gestion avancée des entrées et des sorties pour tous les bâtiments : bloquer, donner la priorité, réserver un stock, remplir une quantité cible et définir une quantité maximale en entrée.
+6. Ajout de la possibilité de déplacer et de trier les produits entre les bâtiments de stockage, comme les silos et les entrepôts de palettes.
+
+v1.0.0.2
+- Les bâtiments peuvent désormais être renommés : tous les bâtiments du réseau de distribution peuvent recevoir un nom personnalisé depuis le menu de construction du jeu de base, y compris les silos, hangars et fosses, que le jeu ne permet normalement pas de renommer. Distribution Redux utilise ce nom dans l’ensemble de ses menus, tandis que le nom original du bâtiment est affiché en dessous comme référence.
+- Correction de l’affichage réciproque des produits du tas de fumier et de la fosse à lisier : le tas de fumier affiche désormais uniquement le fumier et la fosse à lisier uniquement le lisier.
+- Correction de l’absence de produit entrant pour le tas de fumier et la fosse à lisier : ils affichent désormais les produits qui y sont réellement acheminés.
+
+v1.0.0.1
+- Corrections de l’interface et améliorations de la cohérence.
+- Ajout des marchés et des kiosques au système de distribution.
+- Correction de la logique de vente au meilleur prix, qui pouvait vendre les produits trop tôt lors du premier cycle.
+- Ajout du mode de sortie Conserver (interne) : conserve le produit en vrac d’une production dans le bâtiment au lieu de générer automatiquement des palettes.
+- Ajout de la génération manuelle de palettes à partir du stock conservé par une sortie en mode Conserver (interne) : une fenêtre permet de sélectionner le type et la quantité de palettes, dans la limite du stock disponible. Cette fonction est accessible depuis le menu Distribution Redux et depuis l’écran de production du jeu de base.
+]]></fr>
+        <ru><![CDATA[
+Distribution Redux
+Заменяет стандартную систему распределения Farming Simulator 25 на более умную логистическую сеть, управляемую реальным спросом.
+Distribution Redux автоматически перемещает ресурсы между производствами, объектами животноводства, силосами и складами на основе фактической потребности. Мод отдает приоритет ближайшему доступному источнику, поддерживает автоматическое снабжение кормом, соломой и водой, а также дает вам полный контроль над обработкой каждого исходящего продукта.
+
+Особенности
+
+* Дополнительные размещаемые объекты не требуются
+* Работает со всеми стандартными производствами, складами, силосами и загонами для животных
+* Распределение на основе реального расхода ресурсов
+* Автоматическое снабжение кормом, соломой и водой
+* Множество режимов выхода: Хранить, Распределять, Продавать, На склад и их комбинации
+* Режим «Хранить внутри»: удерживает продукцию внутри производства и создает поддоны по требованию
+* Распределение в масштабе всей фермы или по радиусу близости
+* Индивидуальная настройка для каждого здания и каждого продукта
+* Поддержка сетевой игры (мультиплеер)
+
+Совместимость
+Разработан для базовой игры и совместим с большинством стандартных модов. Некоторым нестандартным модовым зданиям может потребоваться дополнительная адаптация.
+
+Обратная связь и сообщения об ошибках: https://github.com/Bones50/FS25-Distribution-Redux
+
+Список изменений
+
+v1.1.0.0
+1. Более 39 исправлений ошибок (подробности в GitHub README).
+2. Более 17 улучшений удобства игры (QoL).
+3. Добавлена совместимость со многими модами, улучшена стабильность кода.
+4. Добавлена вкладка «Обзор», позволяющая видеть всю активность и настройки распределения для всех зданий в одном месте (включает фильтры и режим цепочки поставок для выбранного конечного продукта).
+5. Добавлено расширенное управление входами и выходами (блокировка, приоритеты, резервирование запаса, цели наполнения, лимиты входа) для всех зданий.
+6. Добавлена возможность перемещать и сортировать продукцию между хранилищами (силосы, склады поддонов и т. д.).
+
+v1.0.0.2
+- Здания теперь можно переименовывать: всем зданиям в сети распределения можно дать собственное имя через меню строительства базовой игры (включая хранилища, склады и силосные ямы, что обычно запрещено игрой). Distribution Redux использует это имя во всем интерфейсе, отображая оригинальное название ниже для справки.
+- Исправлено взаимное отображение продукции навозоной кучи и цистерны жидкого навоза: навозная куча теперь показывает только навоз, а цистерна — только жидкий навоз.
+- Исправлено отсутствие входящей продукции у навозных куч и цистерн для жидкого навоза: теперь они отображают то, что действительно в них поступает.
+
+v1.0.0.1
+- Исправления интерфейса и улучшения единообразия.
+- В сеть распределения добавлены рынки и фермерские киоски.
+- Исправлена логика продажи по лучшей цене, которая могла продавать товар слишком рано в первом цикле.
+- Добавлен режим выхода «Хранить внутри»: удержание сыпучей продукции внутри здания вместо автоматического создания поддонов.
+- Добавлено ручное создание поддонов из запасов режима «Хранить внутри» — всплывающее окно позволяет выбрать тип поддона и количество (в пределах запаса), доступно в меню Distribution Redux и на стандартном экране производств базовой игры.
+]]></ru>
     </description>
 
     <iconFilename>icon_DistributionRedux.dds</iconFilename>
 
     <multiplayer supported="true"/>
 
-    <l10n>
-        <text name="input_DISTREDUX_OPEN_DIALOG">
-            <en>Configure distribution (nearest asset)</en>
-        </text>
-        <text name="input_DISTREDUX_OPEN_MANAGER">
-            <en>Open Distribution Redux menu</en>
-        </text>
-    </l10n>
+    <!-- All UI text lives in translations/translation_<lang>.xml, one file per language.
+         The game picks the file matching the player's language and falls back to
+         translation_en.xml for any key a translation does not carry, so a partial
+         translation is safe. Keys referenced as $l10n_<key> from gui/*.xml resolve
+         against THIS mod's namespace automatically: TextElement/MultiTextOptionElement
+         derive customEnvironment from the XML file's own path. From Lua, go through
+         SmartDistribution.l10n(key, englishFallback).
+
+         The labels for the two actions declared below were inline here as <en> blocks.
+         They now live in the translation files with everything else, so there is ONE
+         place to translate and no second convention to remember. Note the two forms
+         differ: an inline modDesc <l10n> block uses <text name="k"><en>...</en></text>,
+         while an external file is already language-specific and uses
+         <text name="k" text="..."/> inside <l10n><texts>. -->
+    <l10n filenamePrefix="translations/translation" />
 
     <actions>
         <action name="DISTREDUX_OPEN_DIALOG" category="BASE"/>
@@ -113,6 +224,10 @@ v1.0.0.1
         <!-- Seasonal price-curve reader for best-price selling (pure reader; loaded early). -->
         <sourceFile filename="scripts/DistributionPricing.lua"/>
         <sourceFile filename="scripts/SmartDistribution.lua"/>
+        <sourceFile filename="scripts/DistributionSort.lua"/>
+        <!-- The public extension API. MUST load after SmartDistribution.lua: it adds
+             fields to that table, and bails with a log line if it loads first. -->
+        <sourceFile filename="scripts/DistributionAPI.lua"/>
         <!-- Overview tab data: the rolling 12-month ring behind its Year timescale, plus the row builder.
              MUST load after SmartDistribution.lua (it hangs its functions off that table), and lives in
              its own file because SmartDistribution.lua's main chunk is at Lua's 200-local ceiling. -->
@@ -128,6 +243,12 @@ v1.0.0.1
         <!-- Consolidated full-screen menu (TabbedMenu) with left-side tabs:
              Productions / Silos / Animal Husbandry / User Guide / Settings.
              Base page class loads first, then the page subclasses, then the menu screen. -->
+        <!-- The typed-number control, COPIED VERBATIM from Husbandry Redux (its own header
+             rules that it must be copied rather than called across mods, since DR must
+             never depend on AR). Keep the two files identical; tools/textpicker.lua
+             drives the DR copy and tools/check_lists.py diffs them. -->
+        <sourceFile filename="scripts/gui/TextPicker.lua"/>
+        <sourceFile filename="scripts/gui/TextTip.lua"/>
         <sourceFile filename="scripts/gui/DistributionMenuPage.lua"/>
         <sourceFile filename="scripts/gui/DistributionSettingsPage.lua"/>
         <sourceFile filename="scripts/gui/DistributionStoragePage.lua"/>
@@ -135,8 +256,14 @@ v1.0.0.1
         <sourceFile filename="scripts/gui/DistributionOverviewPage.lua"/>
         <sourceFile filename="scripts/gui/DistributionHelpPage.lua"/>
         <sourceFile filename="scripts/gui/DistributionSpawnDialog.lua"/>
+        <sourceFile filename="scripts/gui/DistributionPickDialog.lua"/>
         <sourceFile filename="scripts/gui/DistributionAdvancedDialog.lua"/>
         <sourceFile filename="scripts/gui/DistributionInputsDialog.lua"/>
+        <!-- THE ROUTING GRAPH. A dialog since 2026-09-23, not a tab: it is opened FOR a building
+             from that building's own page, the way the two windows above it are, and a dialog can
+             be made bigger than a page rather than smaller (see the XML's own header). -->
+        <sourceFile filename="scripts/gui/DistributionRoutingDialog.lua"/>
         <sourceFile filename="scripts/gui/DistributionMenu.lua"/>
+        <sourceFile filename="scripts/DistributionModWarning.lua"/>
     </extraSourceFiles>
 </modDesc>

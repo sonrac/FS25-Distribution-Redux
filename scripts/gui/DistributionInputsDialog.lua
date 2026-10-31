@@ -7,24 +7,44 @@
 --   Block / Allow    -- refuse this product entirely (or allow it again)
 --   -  /  +          -- raise / lower this product's MAX % of the (pooled) capacity
 --
--- POOLED vs INDIVIDUAL is shown explicitly. A pooled store (hay loft: hay + straw
--- share one slot pool; a husbandry's FOOD pool across grain/silage/etc; a multi-product
--- bulk tank) is where one product can starve another, so the max % there actually
--- reserves room and the shares must sum to <= 100%. Pooled products default to an even
--- split (250k pool / 2 products -> 50% -> 125,000 L each). Individual per-product tanks
--- (straw, water, a single-product silo) can't starve each other, so their max defaults
--- to 100% and is just a fine-tune.
+-- POOLED vs INDIVIDUAL is shown explicitly. A pooled store (hay loft: hay + straw share
+-- one slot pool; a husbandry's FOOD pool; a multi-product bulk tank) is where one product
+-- CAN starve another -- but it is first-come by default: every product may use 100% of the
+-- pool, exactly as the base game would, and a max is a private ceiling the player sets on
+-- ONE product to hold room back for the rest.
+--
+-- Caps therefore do NOT have to sum to 100%. Pooled products used to default to an even
+-- split (250k / 2 products -> 50% each), which broke down completely on a mod-heavy silo:
+-- past 200 products the rounded share reached 0% and the silo accepted nothing at all.
+-- See defaultInputCapLiters in SmartDistribution.lua for the full reasoning.
+--
+-- Individual per-product tanks (straw, water, a single-product silo) can't starve each
+-- other, so a max there is purely a fine-tune.
 --
 -- The % is shown with its live litre equivalent ("50%  (125,000 L)") so the player
 -- always sees the real number, and because it's a PERCENT it rides capacity changes
 -- (a silo extension) with no re-tuning. Every edit goes through DistributionControlEvent.
+--
+-- SECOND TABLE (2026-08-27): beneath the products sits the SOURCE DRILL-DOWN -- for whichever product
+-- is selected, every building that could supply it, with its picture, range, the litres it could
+-- actually hand over, and one of five statuses. It answers the question the product list cannot:
+-- "why is nothing arriving?" Data comes from SmartDistribution.inputSourceRows; the statuses and the
+-- order they resolve in are documented there.
+--
+-- TWO LISTS, ONE DELEGATE. Every list callback branches on `list`. The one that matters is
+-- onListSelectionChanged: an unguarded assignment there would let the lower table repoint rowIndex and
+-- so aim the Block / Max / Target buttons at a row other than the one they highlight.
 -- ============================================================================
 
 DistributionInputsDialog = {}
 local Dlg_mt = Class(DistributionInputsDialog, MessageDialog)
 
-local CAP_STEP = 5      -- percent per -/+ Max press
-local TARGET_STEP = 5   -- percent per -/+ Target press
+-- BOTH RINGS SWEEP THEIR WHOLE RANGE IN 20 PRESSES, which is what the 5%-per-press percentage rings
+-- they replace did -- so the dialog feels exactly as it did while the value it stores is LITRES
+-- (2026-09-22). PRECISE entry is on the Routing tab, which carries a typed box; this stays the coarse
+-- control it has always been.
+local CAP_STEPS = 20     -- presses from empty to the product's whole ceiling
+local TARGET_STEPS = 20  -- ring positions between 0 L and the ceiling, plus Off
 
 local function fillTypeTitle(ft)
     if g_fillTypeManager ~= nil and g_fillTypeManager.getFillTypeByIndex ~= nil then
@@ -42,15 +62,60 @@ local function fmtL(liters)
     return out:reverse():gsub("^,", "")
 end
 
+-- the mod-wide litres/kilolitres rule (SmartDistribution.formatVolume): up to 999 L in litres, above that
+-- kL with the extraneous zeros dropped. It carries the UNIT itself -- do not append " L" to it.
+local function fmtV(n)
+    if SmartDistribution ~= nil and SmartDistribution.formatVolume ~= nil then
+        local ok, s = pcall(SmartDistribution.formatVolume, n or 0)
+        if ok and type(s) == "string" then return s end
+    end
+    return fmtL(n) .. " L"
+end
+
+-- Same format the Advanced OUTPUTS dialog uses for its destination distances, so the two windows state
+-- a range identically. A local copy per the established GUI-helper duplication (CLAUDE.md 4).
+local function fmtDist(d)
+    if d == nil then return "" end
+    return string.format("%dm", math.floor(d + 0.5))
+end
+
+-- The five statuses of a potential source, and the colour each carries. GREEN is supplying, ORANGE is
+-- ready but not being drawn from, RED is the one the player set and can unset; the two grey states are
+-- facts rather than faults, so they sit back and let the eye go to the actionable rows.
+local SRC_DIM = { 0.62, 0.62, 0.62, 1 }
+-- THE WORDS THEMSELVES LIVE ON SmartDistribution (SRC_STATUS_KEY / sourceStatusLabel), because the
+-- routing page's source column states the same six and a copy here would be free to drift from it.
+-- The COLOURS below stay local: this table paints by BUCKET for a list, and the routing page paints
+-- an EDGE with its own vocabulary -- two presentations of one fact, each written where it is read.
+
+-- Colour a cell so SELECTION AND FOCUS CANNOT OVERRIDE IT. TextElement:getColor prefers
+-- textFocusedSelectedColor / textSelectedColor / textFocusedColor over textColor whenever the row is in
+-- those states (read from the base source, TextElement.lua ~907), and SDRowCell defines a selected
+-- colour -- so setTextColor alone would lose the status colour on whichever row the list has selected,
+-- which on a fresh list is row 1: the FEEDING row, the one most worth seeing green. All four setters are
+-- public and are called through pcall so a build lacking one degrades to the base colour.
+local function setSrcColor(c, rgba)
+    if c == nil then return end
+    local r, g, b, a = 1, 1, 1, 1
+    if rgba ~= nil then r, g, b, a = rgba[1], rgba[2], rgba[3], rgba[4] end
+    for _, fn in ipairs({ "setTextColor", "setTextSelectedColor", "setTextFocusedColor",
+                          "setTextFocusedSelectedColor" }) do
+        if c[fn] ~= nil then pcall(c[fn], c, r, g, b, a) end
+    end
+end
+
 function DistributionInputsDialog.new(target, custom_mt)
     local self = MessageDialog.new(target, custom_mt or Dlg_mt)
     self.rows = {}
     self.rowIndex = 1
+    self.sourceRows = {}
     return self
 end
 
-function DistributionInputsDialog:setup(asset)
+function DistributionInputsDialog:setup(asset, role)
     self.asset = asset
+    -- which HALF of the building these blocks and caps belong to (nil for an ordinary building)
+    self.assetRole = role
     self.rowIndex = 1
     self:rebuildRows()
 end
@@ -59,49 +124,179 @@ function DistributionInputsDialog:rebuildRows()
     self.rows = {}
     self.poolLiters = nil
     if self.asset == nil or SmartDistribution == nil or SmartDistribution.receiverInputRows == nil then return end
-    local rows, poolLiters = SmartDistribution.receiverInputRows(self.asset)
+    local rows, poolLiters = SmartDistribution.receiverInputRows(self.asset, self.assetRole)
     self.rows = rows or {}
     self.poolLiters = poolLiters
     if self.rowIndex > #self.rows then self.rowIndex = math.max(1, #self.rows) end
 end
 
+-- The lower table: every building that could supply the SELECTED input, and why it is or is not.
+-- Rebuilt on open, on every selection change and after every action -- this is a modal dialog with no
+-- update tick, so it is a SNAPSHOT rather than a live feed. Accepted: it is read for a few seconds at a
+-- time, and every button that could change an answer rebuilds it. The one figure that can go stale
+-- unaided is a source filling or emptying while the window sits open.
+function DistributionInputsDialog:rebuildSourceRows()
+    self.sourceRows = {}
+    local r = self:selectedRow()
+    -- the read-only "Internal" row carries no fill type, so there is nothing to find sources for
+    if r == nil or r.ft == nil or r.readOnly then return end
+    if SmartDistribution == nil or SmartDistribution.inputSourceRows == nil then return end
+    -- THE BASE UID, deliberately -- NOT rcvUid(). That returns the SETTING key, which on a multi-role
+    -- building is role-suffixed (`uid#shed`), and it is right for the block and cap this dialog writes.
+    -- It is wrong here: the feed log is keyed by getUid(consumer) (6.24) and source-side blocks by
+    -- getUid(consumerPlaceable) (gatherSources), so a role key would find no feeder and no block --
+    -- every row would read Standby. "Which buildings could supply this building" is the same answer for
+    -- either half in any case. Every other caller of sourcesFor passes the base uid too.
+    if SmartDistribution.assetUid == nil then return end
+    local uid = SmartDistribution.assetUid(self.asset)
+    if uid == nil then return end
+    local ok, rows = pcall(SmartDistribution.inputSourceRows, uid, r.ft)
+    if ok and type(rows) == "table" then self.sourceRows = rows end
+end
+
+-- Rebuild + redraw the LOWER table only. Kept separate from refresh() because the selection handler must
+-- be able to update it without reloading the input list under the player's cursor.
+function DistributionInputsDialog:refreshSources()
+    self:rebuildSourceRows()
+    if self.sourceList ~= nil then self.sourceList:reloadData() end
+    -- An empty table under a live header reads as a bug; a sentence reads as an answer. Shown only for a
+    -- row that HAS a fill type: on the read-only Internal row no question is being asked, so neither the
+    -- rows nor the message belong there.
+    local t = self.noSourcesText
+    if t ~= nil and t.setVisible ~= nil then
+        local r = self:selectedRow()
+        local askable = (r ~= nil) and (r.ft ~= nil) and not r.readOnly
+        if t.setText ~= nil then
+            t:setText(SmartDistribution.l10n("dr_inp_noSources",
+                "No building on this farm can supply this product."))
+        end
+        t:setVisible(askable and #self.sourceRows == 0)
+    end
+end
+
 function DistributionInputsDialog:onOpen()
     DistributionInputsDialog:superClass().onOpen(self)
     if self.inputList ~= nil then self.inputList:setDataSource(self); self.inputList:setDelegate(self) end
-    self:refresh()
+    if self.sourceList ~= nil then self.sourceList:setDataSource(self); self.sourceList:setDelegate(self) end
+    self:refresh()          -- ...which builds and draws the source table too, via refreshSources
+    -- THE LIST'S OWN SELECTION SURVIVES A CLOSE; setup()'s rowIndex does not agree with it.
+    -- The dialog object and its SmoothList are created once and REUSED, so selectedIndex is still
+    -- whatever the player left it on last time, while setup() has just reset self.rowIndex to 1. Nothing
+    -- reconciled the two, so on reopen the highlight sat on one row while rowIndex -- and therefore the
+    -- source table beneath -- answered for another. Reported 2026-08-27 as "the information is stale, you
+    -- have to click another line and back": clicking is what synchronised them.
+    --
+    -- It was harmless before this build (the buttons read rowIndex and simply acted on a row other than
+    -- the highlighted one, which nobody had noticed), and the fix was already known here -- apply()
+    -- pushes the selection into the list for exactly this reason. onOpen never did.
+    --
+    -- AFTER refresh(), deliberately: the list must hold its rows before an index can be selected in it,
+    -- and _refreshing must be false or the callback this raises would be swallowed.
+    if self.inputList ~= nil and self.inputList.setSelectedItem ~= nil then
+        pcall(self.inputList.setSelectedItem, self.inputList, 1, self.rowIndex or 1, true)
+    end
+    -- ...and rebuild for whatever is now genuinely selected, in case that callback was not raised.
+    self:refreshSources()
+    self:updateBlockLabel()
+    self:updateTargetButtons()
 end
 
 function DistributionInputsDialog:refresh()
     if self._refreshing then return end
     self._refreshing = true
     if self.inputList ~= nil then self.inputList:reloadData() end
+    self:refreshSources()
     if self.dialogTitleElement ~= nil and self.asset ~= nil then
-        local nm = (self.asset.getName ~= nil) and self.asset:getName() or "Building"
-        self.dialogTitleElement:setText("Advanced Inputs - " .. tostring(nm))
+        local nm = (self.asset.getName ~= nil) and self.asset:getName() or SmartDistribution.l10n("dr_label_building", "Building")
+        self.dialogTitleElement:setText(string.format(SmartDistribution.l10n("dr_inp_title", "Advanced Inputs - %s"), tostring(nm)))
     end
     if self.dialogTextElement ~= nil then
         if self.poolLiters ~= nil then
-            -- show how much of the pool the current shares add up to (should stay <= 100%)
-            local alloc = 0
+            -- A pooled store is FIRST-COME: every product may use all of it unless the player caps it.
+            -- This used to read "N% allocated -- shares can't exceed 100% together", which described the
+            -- old even-split model where the defaults partitioned the pool. With every product now
+            -- defaulting to 100% that sentence would both be wrong and print an absurd number (thirty
+            -- products would report "3000% allocated"), so it states the actual rule instead. A cap is a
+            -- private ceiling on one product, not its slice -- so caps do NOT have to sum to anything.
+            local shared, capped = 0, 0
             for _, r in ipairs(self.rows) do
-                if r.pooled and not r.blocked then alloc = alloc + (r.pct or 0) end
+                if r.pooled and not r.blocked then
+                    shared = shared + 1
+                    if r.explicit then capped = capped + 1 end
+                end
             end
-            self.dialogTextElement:setText(string.format("Pooled storage: %s L shared - %d%% allocated. Shares can't exceed 100%% together.", fmtL(self.poolLiters), alloc))
+            local msg
+            if capped > 0 then
+                msg = string.format(SmartDistribution.l10n("dr_inp_pooledCapped",
+                    "Pooled storage: %s shared by %d products, %d capped. Anything uncapped may use the whole pool."),
+                    fmtV(self.poolLiters), shared, capped)
+            else
+                msg = string.format(SmartDistribution.l10n("dr_inp_pooled",
+                    "Pooled storage: %s shared by %d products. Each may use all of it - set a max to reserve room for the others."),
+                    fmtV(self.poolLiters), shared)
+            end
+            self.dialogTextElement:setText(msg)
         else
-            self.dialogTextElement:setText("Set each product's max, or block it. This building has individual per-product storage.")
+            self.dialogTextElement:setText(SmartDistribution.l10n("dr_inp_individual",
+                "Set each product's max, or block it. This building has individual per-product storage."))
         end
     end
     self:updateBlockLabel()
     self:updateBlockAllLabel()
+    self:updateTargetButtons()
     self._refreshing = false
 end
 
 -- ---- list data ------------------------------------------------------------
+-- TWO LISTS SHARE ONE DELEGATE, so every callback must branch on `list`. Answering #self.rows for both
+-- would size the source table by the input table.
 function DistributionInputsDialog:getNumberOfItemsInSection(list, section)
+    if list == self.sourceList then return #self.sourceRows end
     return #self.rows
 end
 
+-- One row of the lower table: thumbnail, name, range, litres it could hand over, and why it is or is not.
+function DistributionInputsDialog:populateSourceCell(index, cell)
+    local function setc(name, text)
+        local c = cell:getAttribute(name)
+        if c ~= nil and c.setText ~= nil then c:setText(text or "") end
+    end
+    local s = self.sourceRows[index]
+    if s == nil then return end
+    setc("srcName",  s.name)
+    setc("srcRange", fmtDist(s.dist))
+    -- litres it could actually hand over, not its total contents: providableLiters answers for the pools
+    -- the allocator would really draw from. A dash where there is none, so a zero never reads as a figure.
+    setc("srcHolds", (s.liters or 0) > 0 and fmtV(s.liters) or "-")
+    setc("srcStatus", SmartDistribution.sourceStatusLabel(s.status))
+    -- Cells are RECYCLED by SmoothList, so every one is written and coloured on EVERY populate -- never
+    -- left to inherit the previous row's (the 5.7 / 5.57 trap).
+    -- COLOURED BY BUCKET, so the table reads as the three numbers in the status column beside it:
+    -- green = feeding, orange = could feed but isn't (standby OR merely empty), grey = can't. RED is
+    -- reserved within that last group for BLOCKED, the only one of the three the player set and can
+    -- unset -- painting "Out of Range" red would be alarming about plain geography.
+    local COL = (SmartDistribution.LINK_COLOR or {})
+    local rgba = SRC_DIM
+    if     s.status == "FEEDING"  then rgba = COL.ACTIVE
+    elseif s.status == "STANDBY"  then rgba = COL.IDLE
+    elseif s.status == "NO_STOCK" then rgba = COL.IDLE
+    elseif s.status == "BLOCKED"  then rgba = COL.BLOCKED end
+    setSrcColor(cell:getAttribute("srcStatus"), rgba)
+    -- the building's own picture, resolved through the ONE chain (5.71) with its blank-placeholder and
+    -- file-exists fallbacks; setAssetIcon hides the element when nothing resolves
+    local ic = cell:getAttribute("assetIcon")
+    if ic ~= nil then
+        if s.icon ~= nil and ic.setImageFilename ~= nil then
+            ic:setImageFilename(s.icon)
+            if ic.setVisible ~= nil then ic:setVisible(true) end
+        elseif ic.setVisible ~= nil then
+            ic:setVisible(false)
+        end
+    end
+end
+
 function DistributionInputsDialog:populateCellForItemInSection(list, section, index, cell)
+    if list == self.sourceList then return self:populateSourceCell(index, cell) end
     local function setc(name, text)
         local c = cell:getAttribute(name)
         if c ~= nil and c.setText ~= nil then c:setText(text or "") end
@@ -109,20 +304,37 @@ function DistributionInputsDialog:populateCellForItemInSection(list, section, in
     local r = self.rows[index]
     if r == nil then return end
     setc("name", r.readOnly and (r.name or "") or fillTypeTitle(r.ft))
-    setc("kind", r.readOnly and "Internal" or (r.pooled and "Pooled" or "Individual"))
-    setc("held", fmtL(r.held) .. " L")
+    setc("kind", r.readOnly and SmartDistribution.l10n("dr_type_internal", "Internal")
+        or (r.linked and SmartDistribution.l10n("dr_type_linked", "Linked"))
+        or (r.pooled and SmartDistribution.l10n("dr_type_pooled", "Pooled") or SmartDistribution.l10n("dr_type_individual", "Individual")))
+    setc("held", fmtV(r.held))
     if r.readOnly then
-        setc("cap", fmtL(r.maxLiters) .. " L")   -- capacity, informational
+        setc("cap", fmtV(r.maxLiters))   -- capacity, informational
+        setc("avail", "-")
         setc("target", "-")
     elseif r.blocked then
-        setc("cap", "BLOCKED")
+        setc("cap", SmartDistribution.l10n("dr_type_blocked", "BLOCKED"))
+        setc("avail", fmtV(0))                   -- a blocked product will accept nothing, which is the point
         setc("target", "-")
     else
-        setc("cap", string.format("%d%%  (%s L)", r.pct, fmtL(r.maxLiters)))
-        if r.targetPct ~= nil then
-            setc("target", string.format("%d%%  (%s L)", r.targetPct, fmtL(r.targetLiters or 0)))
+        -- MAX IN is the CAP: the percentage and the litres that percentage represents. AVAILABLE is what
+        -- will actually go in right now -- the cap less what this product holds, and never more than the
+        -- space the other products have left. Two different questions, so two columns; pairing "100%" with
+        -- the elastic figure in one cell is what made a 75,000 L silo read "100%  (15,000 L)".
+        -- LITRES, since 2026-09-22 (the setting is stored in litres; a percentage here would be a
+        -- second unit for one number). The bracket is what the pool ACTUALLY allows right now, which
+        -- can be lower than the ceiling when the other products are holding stock.
+        setc("cap", string.format("%s  (%s)", fmtV(r.capL or 0), fmtV(r.maxLiters)))
+        setc("avail", r.availLiters ~= nil and fmtV(r.availLiters) or "-")
+        -- A DASH, not "Off", where a fill target cannot bind at all (silo / pallet store / heap / market
+        -- and a pass-through store's tank): "Off" implies it could be switched on, and on a push-only
+        -- receiver it would only duplicate Max in %. See SmartDistribution.fillTargetApplies.
+        if r.targetApplies == false then
+            setc("target", "-")
+        elseif r.targetL2 ~= nil then
+            setc("target", fmtV(r.targetLiters or r.targetL2))
         else
-            setc("target", "Off")
+            setc("target", SmartDistribution.l10n("dr_label_off", "Off"))
         end
     end
     -- icon (hidden for the read-only internal row)
@@ -142,8 +354,20 @@ end
 
 function DistributionInputsDialog:onListSelectionChanged(list, section, index)
     if self._refreshing then return end
+    -- THE SOURCE LIST MUST NEVER MOVE rowIndex. It is informational, but it shares this delegate, so an
+    -- unguarded assignment here would repoint the Block / Max / Target buttons at whatever row of the
+    -- LOWER table happened to be selected -- a control acting on something other than the row it
+    -- highlights. It is not wired to onSelectionChanged in the XML either; this is the belt to that brace.
+    if list == self.sourceList then return end
     self.rowIndex = index
+    -- The lower table answers for the SELECTED product, so it follows the selection. Deliberately NOT a
+    -- full refresh(): that reloads the INPUT list too, which would rebuild the very rows the player is
+    -- selecting between and can move the highlight out from under them.
+    self:refreshSources()
     self:updateBlockLabel()
+    -- ...and the target buttons, which are per-ROW: a dialog whose rows differ in whether a fill
+    -- target can bind must re-evaluate them on every selection, not only on refresh.
+    self:updateTargetButtons()
 end
 function DistributionInputsDialog:onClickInputRow(element) end
 
@@ -152,23 +376,48 @@ function DistributionInputsDialog:selectedRow()
 end
 
 -- Relabel the block button for the selected row: blocked -> "Allow", else "Block".
+-- A FILL TARGET only means something where the receiver PULLS: a production line or a husbandry asks
+-- for what it needs, so "fill to 60%" is a real instruction. A silo, pallet store, heap or market is
+-- filled by PUSH, so a target there would either do nothing or merely duplicate Max in % -- which is
+-- why SmartDistribution.fillTargetApplies exists and why onTargetDelta already refuses to step one.
+-- The buttons were still drawn as though they were live, though, so on a silo the dialog offered two
+-- controls that could not do anything. Reported 2026-08-25.
+--
+-- DISABLED, not hidden: they sit in a BoxLayout with separator bitmaps between them, so removing two
+-- entries mid-row would leave a gap or reflow the whole footer. Greying them states "not applicable
+-- here" without touching the layout, and it is per SELECTION, so a dialog whose rows differ is right
+-- on every row.
+function DistributionInputsDialog:updateTargetButtons()
+    local r = self:selectedRow()
+    local off = (r == nil) or (r.targetApplies == false)
+    for _, b in ipairs({ self.targetDownButton, self.targetUpButton }) do
+        if b ~= nil and b.setDisabled ~= nil then b:setDisabled(off) end
+    end
+end
+
 function DistributionInputsDialog:updateBlockLabel()
     if self.blockButton == nil or self.blockButton.setText == nil then return end
     local r = self:selectedRow()
-    self.blockButton:setText((r ~= nil and r.blocked) and "Allow" or "Block")
+    self.blockButton:setText((r ~= nil and r.blocked) and SmartDistribution.l10n("dr_btn_allow", "Allow") or SmartDistribution.l10n("dr_btn_block", "Block"))
 end
 
 -- ---- actions (all routed through the MP-safe control event) ----------------
 function DistributionInputsDialog:rcvUid()
-    if self.asset == nil or SmartDistribution.assetUid == nil then return nil end
-    return SmartDistribution.assetUid(self.asset)
+    if self.asset == nil or SmartDistribution.settingUid == nil then return nil end
+    -- per FILL TYPE: a LINKED product writes to the tank's entry, so a change made here shows on the
+    -- silo's dialog too (and the other way round). r may be nil on a header/keypress path -- fall back
+    -- to the role's own key, which is what every non-linked product uses anyway.
+    local r = self:selectedRow()
+    return SmartDistribution.settingUid(self.asset, r ~= nil and r.ft or nil, self.assetRole)
 end
 
-function DistributionInputsDialog:apply(act, ft, delta, flag)
+function DistributionInputsDialog:apply(act, ft, delta, flag, amount)
     local uid = self:rcvUid()
     if uid == nil then return end
     if DistributionControlEvent ~= nil and DistributionControlEvent.send ~= nil then
-        DistributionControlEvent.send(act, uid, ft, "", delta or 0, flag or false)
+        -- `amount` is the float the LITRE settings ride in; `delta` is an int8 and cannot carry one
+        -- (5.10). Both are passed on every call, and each action reads only the one it uses.
+        DistributionControlEvent.send(act, uid, ft, "", delta or 0, flag or false, amount)
     end
     local keepFt = ft
     self:rebuildRows()
@@ -214,7 +463,7 @@ function DistributionInputsDialog:updateBlockAllLabel()
     if self.blockAllButton == nil or self.blockAllButton.setText == nil then return end
     local anyAllowed = false
     for _, r in ipairs(self.rows) do if not r.blocked then anyAllowed = true; break end end
-    self.blockAllButton:setText(anyAllowed and "Block All" or "Allow All")
+    self.blockAllButton:setText(anyAllowed and SmartDistribution.l10n("dr_btn_blockAll", "Block All") or SmartDistribution.l10n("dr_btn_allowAll", "Allow All"))
 end
 
 -- Max-in (cap %) stepper, now a WRAPPING ring: steps by CAP_STEP and loops 0 <-> max. For an individual
@@ -223,15 +472,20 @@ end
 function DistributionInputsDialog:onCapDelta(dir)
     local r = self:selectedRow()
     if r == nil or r.blocked or r.readOnly then return end
-    local maxPct = 100
-    if r.pooled and SmartDistribution.inputCapPctHeadroom ~= nil then
-        maxPct = math.max(0, math.min(100, SmartDistribution.inputCapPctHeadroom(self.asset, r.ft) or 100))
-    end
-    local pct = (r.pct or 0) + dir * CAP_STEP
-    if pct > maxPct then pct = 0            -- wrap past the top
-    elseif pct < 0 then pct = maxPct end    -- wrap past the bottom
-    if pct == r.pct then return end
-    self:apply(DistributionControlEvent.ACT.INPUT_CAP, r.ft, pct, false)
+    -- LITRES. The ring still sweeps the whole range in CAP_STEPS presses, so it feels exactly as it
+    -- did -- but each press is now a round figure of litres rather than a percentage point, and the
+    -- stored value is the litre itself. PRECISE entry is on the Routing tab, which has a typed box;
+    -- this is the coarse control it always was.
+    local maxL = SmartDistribution.inputCapHeadroom ~= nil
+        and (SmartDistribution.inputCapHeadroom(self.asset, r.ft, self.assetRole) or 0) or 0
+    if maxL <= 0 then return end
+    local step = math.max(1, math.floor(maxL / CAP_STEPS))
+    local cur  = r.capL or maxL
+    local want = cur + dir * step
+    if want > maxL then want = 0                -- wrap past the top
+    elseif want < 0 then want = maxL end        -- wrap past the bottom
+    if math.abs(want - cur) < 0.5 then return end
+    self:apply(DistributionControlEvent.ACT.INPUT_CAP, r.ft, 0, false, want)
 end
 function DistributionInputsDialog:onCapDown() self:onCapDelta(-1) end
 function DistributionInputsDialog:onCapUp()   self:onCapDelta( 1) end
@@ -242,17 +496,67 @@ function DistributionInputsDialog:onCapUp()   self:onCapDelta( 1) end
 function DistributionInputsDialog:onTargetDelta(dir)
     local r = self:selectedRow()
     if r == nil or r.readOnly or r.blocked then return end
-    local n = 2 + math.floor(100 / TARGET_STEP)          -- ring positions: Off(0), 0%(1) .. 100%(n-1)
-    local curIdx = (r.targetPct == nil) and 0 or (1 + math.floor((r.targetPct or 0) / TARGET_STEP))
+    -- and refuse to step a target the receiver can never act on, or the buttons would write a setting
+    -- that is stored, displayed and silently ignored -- the failure shape this codebase chases most.
+    if r.targetApplies == false then return end
+    -- LITRES, as a ring of TARGET_STEPS positions over the product's own ceiling, plus Off. Off and
+    -- 0 L stay DISTINCT: Off is the recipe's own demand, 0 L is a real "hold this at empty".
+    local maxL = SmartDistribution.inputCapLiters ~= nil
+        and (SmartDistribution.inputCapLiters(self.asset, r.ft, self.assetRole) or 0) or 0
+    if maxL <= 0 then return end
+    local step = maxL / TARGET_STEPS
+    local n = 2 + TARGET_STEPS                            -- Off(0), 0 L(1) .. maxL(n-1)
+    local curIdx = (r.targetL2 == nil) and 0
+                   or (1 + math.floor(((r.targetL2 or 0) / step) + 0.5))
+    if curIdx > n - 1 then curIdx = n - 1 end
     local newIdx = (curIdx + dir) % n
-    if newIdx < 0 then newIdx = newIdx + n end            -- (defensive; Lua % is already non-negative here)
     local A = DistributionControlEvent.ACT
     if newIdx == 0 then
-        self:apply(A.INPUT_TARGET, r.ft, -1, false)       -- Off (clear the target)
+        self:apply(A.INPUT_TARGET, r.ft, 0, false, -1)    -- Off (clear the target)
     else
-        self:apply(A.INPUT_TARGET, r.ft, (newIdx - 1) * TARGET_STEP, false)
+        self:apply(A.INPUT_TARGET, r.ft, 0, false, (newIdx - 1) * step)
     end
 end
+-- ---- FOOTER KEYS -----------------------------------------------------------
+-- A ButtonElement's input action is DISPLAY ONLY -- it draws the key glyph and nothing acts on it
+-- (grepped: the only readers in the engine are ButtonElement and InputGlyphElementUI). A dialog that
+-- wants the key to work has to handle it itself, the way YesNoDialog:inputEvent does.
+--
+-- Reported 2026-08-26 as "every footer button shows the Enter glyph". TWO faults, and the second is why
+-- the first mattered:
+--   * the XML attribute ButtonElement reads is `#inputAction`; DR wrote `inputActionName`, which is
+--     never read. So every button fell through to the buttonOK PROFILE's action and drew the same glyph.
+--   * and no dialog overrode inputEvent, so NONE of the keys did anything anyway. The glyphs were not
+--     merely identical, they were claiming keys that did not exist.
+-- This also retires 5.4's "5th/6th-action key-glyph scramble": that was never a limit on how many
+-- actions a footer could carry, it was this typo making every extra button look the same.
+--
+-- OUR ACTIONS ARE HANDLED BEFORE THE SUPERCLASS CALL, and that is not cosmetic ordering. The first
+-- version delegated first and acted only on `not eventUsed` -- and MENU_PAGE_NEXT never arrived, so
+-- "+ Reserve" did nothing while "- Reserve" (MENU_PAGE_PREV) worked. Something above consumes NEXT and
+-- not PREV. Claiming ours first sidesteps whatever that is, and passing eventUsed=true down still tells
+-- the base the event is spoken for. Safe here because these are MessageDialogs: no tabs to page, and the
+-- lists use MENU_LIST_PAGE_* rather than MENU_PAGE_*.
+--
+-- MENU_BACK is deliberately NOT claimed -- the close button owns it (Esc). MENU_CANCEL is Backspace, far
+-- enough from an accidental press for the bulk "all" button.
+--
+-- Worth keeping even though it is no longer used: a profile declaring an EMPTY inputAction fails the
+-- InputAction[name] lookup in ButtonElement:loadProfile and leaves a button with NO glyph at all --
+-- confirmed in game 2026-08-26. That is the way to make a footer button genuinely mouse-only.
+function DistributionInputsDialog:inputEvent(action, value, eventUsed)
+    if not eventUsed and action ~= nil and InputAction ~= nil then
+        if     action == InputAction.MENU_EXTRA_1  then self:onCapDown();      eventUsed = true
+        elseif action == InputAction.MENU_EXTRA_2  then self:onCapUp();        eventUsed = true
+        elseif action == InputAction.MENU_ACCEPT   then self:onToggleBlock();  eventUsed = true
+        elseif action == InputAction.MENU_CANCEL   then self:onToggleAllBlock(); eventUsed = true
+        elseif action == InputAction.MENU_PAGE_PREV then self:onTargetDown();  eventUsed = true
+        elseif action == InputAction.MENU_PAGE_NEXT then self:onTargetUp();    eventUsed = true
+        end
+    end
+    return DistributionInputsDialog:superClass().inputEvent(self, action, value, eventUsed)
+end
+
 function DistributionInputsDialog:onTargetDown() self:onTargetDelta(-1) end
 function DistributionInputsDialog:onTargetUp()   self:onTargetDelta( 1) end
 
@@ -260,3 +564,6 @@ function DistributionInputsDialog:onClickBack()
     self:close()
     return false
 end
+
+-- FULL TEXT ON HOVER for any cell the layout cut short (TextTip.lua, 2026-09-29).
+if TextTip ~= nil and TextTip.install ~= nil then TextTip.install(DistributionInputsDialog) end

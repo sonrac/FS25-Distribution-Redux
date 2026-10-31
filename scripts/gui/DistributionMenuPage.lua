@@ -29,9 +29,99 @@ function DistributionMenuPage:initialize()
     self.menuButtonInfo = { self.backButtonInfo }
 end
 
+
+-- ---- THE DISTRIBUTION GROUP -------------------------------------------------------------------
+-- One left icon carries Productions, Storage, Animal Husbandry and Markets, and they appear as TOP
+-- TABS instead. These four are only TWO classes and both descend from this one, so the machinery
+-- lives here once rather than being copied (6.18). A page opts in with GROUP_MEMBER = true.
+--
+-- THESE TABS NAVIGATE; they do not swap content in place. Settings and Help switch rows and topics
+-- inside one page, and every one of these is a separate registered page with its own class, XML,
+-- footer and onFrameOpen -- so selecting one is a PAGE CHANGE. That is the only difference between
+-- the two kinds of tab, and it is carried by `entry.page` alone: the strip, the A / D keys and the
+-- arrows are all shared and know nothing about it.
+--
+-- Settings, Help and the Overview override every one of these, so they never reach them.
+
+---True only while this page is a group member AND the grouped layout is switched on. With the flag
+-- off the pages keep their own left icons and draw no strip, which is the whole rollback.
+function DistributionMenuPage:isGroupMember()
+    return self.GROUP_MEMBER == true and SmartDistribution ~= nil
+           and SmartDistribution.MENU_V2 == true
+end
+
+function DistributionMenuPage:pageTabKey()
+    return (SmartDistribution ~= nil and SmartDistribution.GROUP_TAB_KEY) or "distribution"
+end
+
+---Paint the strip, and work out which tab THIS page is.
+--
+-- currentTab is DERIVED, never remembered: arriving here means a page change has just happened, and
+-- the tab that is current is by definition the one whose entry points at this page. Remembering it
+-- would be a second source of truth for something the registry already answers.
+function DistributionMenuPage:refreshGroupTabs()
+    if SmartDistribution == nil or SmartDistribution.drawPageTabs == nil then return end
+    local key  = self:pageTabKey()
+    local list = SmartDistribution.pageTabs(key)
+    local labels, cur = {}, 1
+    for i, t in ipairs(list) do
+        labels[i] = t.label
+        if type(t.entry) == "table" and t.entry.page == self then cur = i end
+    end
+    self.currentTab = cur
+    -- Flag off: no labels, so drawPageTabs suppresses the strip and gives the header band back to
+    -- the page title. One call either way; the page needs no second path.
+    if not self:isGroupMember() then labels = {} end
+    SmartDistribution.drawPageTabs(self, labels, cur)
+end
+
+---Go to the page behind tab `i`. Reached from the tab buttons, the arrows and the A / D keys alike.
+function DistributionMenuPage:selectPageTab(i)
+    if not self:isGroupMember() then return end
+    local t = SmartDistribution.pageTabs(self:pageTabKey())[i]
+    if t == nil or type(t.entry) ~= "table" then return end
+    local target = t.entry.page
+    -- Already here: goToPage would still fire a page change, closing and reopening this very frame
+    -- for nothing -- which on these pages means a full re-enumeration.
+    if target == nil or target == self then return end
+    local menu = SmartDistribution._menu
+    if menu ~= nil and menu.goToPage ~= nil then pcall(menu.goToPage, menu, target) end
+end
+
+function DistributionMenuPage:onPageTab1() self:selectPageTab(1) end
+function DistributionMenuPage:onPageTab2() self:selectPageTab(2) end
+function DistributionMenuPage:onPageTab3() self:selectPageTab(3) end
+function DistributionMenuPage:onPageTab4() self:selectPageTab(4) end
+function DistributionMenuPage:onPageTab5() self:selectPageTab(5) end
+function DistributionMenuPage:onPageTab6() self:selectPageTab(6) end
+
+---STEP THIS PAGE'S TABS BY `delta`, WRAPPING. Returns true only if one actually moved.
+--
+-- THE CONTRACT THE MENU'S A / D HANDLER CALLS. Every DR page inherits this, which drives the
+-- shared registry through whatever key the page names; a page belonging to another mod implements
+-- the same method over its own tabs and gets the keys for free. One method, no registration, and
+-- nothing for a mod to version-test: an older DR simply never calls it.
+function DistributionMenuPage:stepPageTabBy(delta)
+    if SmartDistribution == nil or SmartDistribution.stepPageTab == nil then return false end
+    if self.pageTabKey == nil then return false end
+    return SmartDistribution.stepPageTab(self, self:pageTabKey(), delta) == true
+end
+
+function DistributionMenuPage:onPageTabPrev()
+    if SmartDistribution ~= nil then SmartDistribution.stepPageTab(self, self:pageTabKey(), -1) end
+end
+function DistributionMenuPage:onPageTabNext()
+    if SmartDistribution ~= nil then SmartDistribution.stepPageTab(self, self:pageTabKey(), 1) end
+end
+
 function DistributionMenuPage:onFrameOpen()
     DistributionMenuPage:superClass().onFrameOpen(self)
     self:setMenuButtonInfoDirty()
+    -- ONE CALL SITE for all four grouped pages, and a no-op for every other page: a page that is not
+    -- a member has no drTabBtn1 in its layout, so drawPageTabs finds nothing to paint. Settings,
+    -- Help and the Overview each drive their own strip from their own onFrameOpen and override
+    -- refreshGroupTabs' siblings, so they are not touched by this either.
+    if self.GROUP_MEMBER == true then self:refreshGroupTabs() end
 
     self:setSoundSuppressed(true)
     if self.boxLayout ~= nil then
@@ -71,20 +161,103 @@ end
 -- figures themselves only change on the hourly pass; between hours this mainly keeps held-litres live.
 DistributionMenuPage.REALTIME_REFRESH_MS = 500
 
+-- ---- adaptive backoff -------------------------------------------------------
+-- The "Menu refresh rate" setting cannot be the whole answer to a farm too big to refresh, because it sits
+-- BEHIND the menu: a player whose menu is unusable cannot reach the control that would make it usable.
+-- Defaulting the setting to Manual would dodge that, but at the cost of every NORMAL farm silently showing
+-- stale figures, which most players would read as the mod being broken.
+--
+-- So the menu measures itself instead and paces its own refreshes to what the farm can actually afford. A
+-- normal farm never leaves the rate the player chose; a pathological one settles within a few refreshes at
+-- a pace it can sustain, with no setting to find. The chosen rate is a FLOOR -- this only ever stretches
+-- the interval, never tightens it past what was asked for.
+--
+-- Class-level, not per-page, because it is a property of the FARM: what the Overview learns the building
+-- tabs should not have to re-learn by hitching again.
+-- The rule is a DUTY CYCLE, not a threshold: never spend more than 1/REFRESH_DUTY of wall-clock time
+-- refreshing. So the interval is proportional to what a refresh actually costs, which is what makes the
+-- response proportionate -- a 140 ms refresh stretches to ~2.8 s and stays usefully live, where a
+-- doubling-on-threshold scheme jumped it straight to the cap and made the figures needlessly stale. A
+-- genuinely pathological 4 s refresh lands on the MAX_INTERVAL cap, i.e. effectively manual.
+--
+-- The cost is SMOOTHED, so one unlucky frame (a GC pause, a stutter from elsewhere) cannot pin the
+-- interval; it decays back within a few refreshes.
+DistributionMenuPage.REFRESH_DUTY  = 20      -- at most 1/20th (5%) of the time spent refreshing
+DistributionMenuPage.MAX_INTERVAL  = 60      -- never stretch beyond a minute
+DistributionMenuPage.COST_SMOOTH   = 0.5     -- weight of the newest sample
+DistributionMenuPage._refreshCost  = 0
+
+function DistributionMenuPage.resetRefreshPacing()
+    DistributionMenuPage._refreshCost = 0
+end
+
+function DistributionMenuPage.noteRefreshCost(sec)
+    if type(sec) ~= "number" or sec < 0 then return end
+    local s = DistributionMenuPage.COST_SMOOTH
+    DistributionMenuPage._refreshCost = (DistributionMenuPage._refreshCost or 0) * (1 - s) + sec * s
+end
+
+-- Seconds between background refreshes, from the "Menu refresh rate" setting; nil means "do not refresh on
+-- a timer at all" (Manual only). The setting exists because this cost scales with the farm: re-populating
+-- the number cells re-reads live held / capacity / link status for every visible row, and on the Overview it
+-- re-enumerates the whole network. Falls back to the old hardcoded rate when the setting is unavailable, so
+-- nothing depends on load order.
+function DistributionMenuPage.refreshSeconds()
+    local g = (SmartDistribution ~= nil and SmartDistribution.settings ~= nil)
+        and SmartDistribution.settings.global or nil
+    local v = g ~= nil and g.menuRefresh or nil
+    if type(v) ~= "number" then v = DistributionMenuPage.REALTIME_REFRESH_MS / 1000 end
+    if v < 0 then return nil end                       -- manual only: there is nothing to pace
+    -- the player's rate is a FLOOR, never a ceiling: this only ever stretches the interval, so choosing
+    -- Live on a farm that can afford it still gets Live
+    local want = (DistributionMenuPage._refreshCost or 0) * DistributionMenuPage.REFRESH_DUTY
+    if want < v then want = v end
+    if want > DistributionMenuPage.MAX_INTERVAL then want = DistributionMenuPage.MAX_INTERVAL end
+    return want
+end
+
 -- ---- shared Hour / Month / Year selector ------------------------------------
 -- The building tabs (Silos, Animal Husbandry, Markets, Productions) each carry a `periodOption`
 -- MultiTextOption that rescopes their RECEIVED / CONSUMED / PRODUCED / DISTRIBUTED figures, exactly like
 -- the Overview tab's. The windows are DR's own: a cycle is an hour, a month is 24 of them.
 -- Lives on the base page so all four share one implementation; pages without the widget just no-op.
 DistributionMenuPage.PERIODS       = { "hour", "month", "year" }
+-- English fallbacks. The live labels are built per call by periodLabels(), because l10n is
+-- not necessarily up when this chunk loads.
 DistributionMenuPage.PERIOD_LABELS = { "Cycle (hour)", "Month", "Year" }
+DistributionMenuPage.PERIOD_KEYS   = { "dr_period_hourLong", "dr_period_month", "dr_period_year" }
+function DistributionMenuPage.periodLabels()
+    if SmartDistribution == nil or SmartDistribution.l10n == nil then return DistributionMenuPage.PERIOD_LABELS end
+    local out = {}
+    for i, fb in ipairs(DistributionMenuPage.PERIOD_LABELS) do
+        out[i] = SmartDistribution.l10n(DistributionMenuPage.PERIOD_KEYS[i], fb)
+    end
+    return out
+end
 
 function DistributionMenuPage:initPeriodOption()
     self.periodIndex = self.periodIndex or 2          -- default Month: what these columns showed before
     local opt = self.periodOption
     if opt == nil or opt.setTexts == nil then return end
-    opt:setTexts(DistributionMenuPage.PERIOD_LABELS)
+    opt:setTexts(DistributionMenuPage.periodLabels())
     if opt.setState ~= nil then pcall(function() opt:setState(self.periodIndex) end) end
+end
+
+---EVERY PAGE OPENS ON CYCLE (author's call, 2026-09-09).
+--
+-- initPeriodOption runs in onGuiSetupFinished -- ONCE, when the GUI is built -- so its
+-- default only ever applied to the first open of a session and the selector then kept
+-- whatever the player last chose, for as long as the game ran. Opening the menu is the
+-- moment you want "what is happening right now", so the timescale resets to the
+-- shortest one and a deliberate choice lasts as long as you are looking at it.
+--
+-- The WIDGET is re-synced too: setting the index alone leaves the selector showing the
+-- old label while every figure beneath it reports the new period, which is worse than
+-- either behaviour on its own.
+function DistributionMenuPage:resetPeriodToCycle()
+    self.periodIndex = 1
+    local opt = self.periodOption
+    if opt ~= nil and opt.setState ~= nil then pcall(function() opt:setState(1) end) end
 end
 
 function DistributionMenuPage:currentWindow()
@@ -119,6 +292,9 @@ end
 function DistributionMenuPage:refreshRealtimeLists()
     local names = self._realtimeLists
     if names == nil or self._focusing then return end   -- _focusing: a selection event is mid-flight; skip
+    -- Timed as ONE unit: the row rebuild and the cell repopulate are both part of what a refresh costs the
+    -- frame, and it is the total the player feels. Two getTimeSec reads, so the measurement is free.
+    local _t0 = (getTimeSec ~= nil) and getTimeSec() or nil
     -- Pages that CACHE their row figures (e.g. Productions stores received/produced/sold in row objects it
     -- builds on selection) recompute them here; pages whose populate reads live (e.g. Storage) need nothing.
     if self.rebuildRealtimeData ~= nil then pcall(function() self:rebuildRealtimeData() end) end
@@ -138,6 +314,7 @@ function DistributionMenuPage:refreshRealtimeLists()
         end
     end
     self._focusing = false
+    if _t0 ~= nil then DistributionMenuPage.noteRefreshCost(getTimeSec() - _t0) end
 end
 
 function DistributionMenuPage:update(dt)
@@ -146,17 +323,51 @@ function DistributionMenuPage:update(dt)
 
     -- throttled real-time refresh of the open page's number lists. Wall-clock (getTimeSec, real seconds) so
     -- it is immune to whatever units dt is in.
-    if self._realtimeLists ~= nil then
+    -- A production's cached v-mode was just re-derived (the server's uid map or a replayed override landed
+    -- mid-join, see invalidateSeededVModes). Repaint NOW rather than waiting out the refresh interval --
+    -- and do it even under "Manual only", because this is not a stale FIGURE, it is a stale MODE, and
+    -- pressing Cycle Output against it would step from the wrong value and write that back to the server.
+    if self._realtimeLists ~= nil and SmartDistribution ~= nil then
+        local ep = SmartDistribution._vmodeEpoch or 0
+        if self._vmodeEpochSeen ~= ep then
+            self._vmodeEpochSeen = ep
+            self._rtLast = (getTimeSec ~= nil) and getTimeSec() or self._rtLast   -- also restarts the throttle
+            pcall(function() self:refreshRealtimeLists() end)
+        end
+    end
+
+    -- A BLOCK CHANGED WHICH ROWS EXIST, so the row DATA has to be rebuilt and not merely repopulated.
+    -- 5.57 hides a product that is blocked and holding nothing, and the periodic refresh below only
+    -- reloads the lists -- it never re-runs buildDetailRows -- so a newly blocked product stayed on
+    -- screen until the player left the tab and came back (reported 2026-08-24).
+    --
+    -- Runs even under "Manual only", for the same reason the v-mode check above does: this is not a stale
+    -- FIGURE, it is a row that should no longer be there, and acting on it is a real mis-click. Guarded on
+    -- the page actually having a builder, so a page without one (the Settings and User Guide tabs do no
+    -- realtime work at all) is untouched.
+    if self._realtimeLists ~= nil and SmartDistribution ~= nil and self.buildDetailRows ~= nil then
+        local rep = SmartDistribution._rowsEpoch or 0
+        if self._rowsEpochSeen ~= rep then
+            self._rowsEpochSeen = rep
+            pcall(function()
+                self:buildDetailRows()
+                self:refreshRealtimeLists()
+            end)
+        end
+    end
+
+    local every = DistributionMenuPage.refreshSeconds()      -- nil = Manual only: no background refresh
+    if self._realtimeLists ~= nil and every ~= nil then
         local now = (getTimeSec ~= nil) and getTimeSec() or nil
         if now ~= nil then
-            if self._rtLast == nil or (now - self._rtLast) >= (DistributionMenuPage.REALTIME_REFRESH_MS / 1000) then
+            if self._rtLast == nil or (now - self._rtLast) >= every then
                 self._rtLast = now
                 pcall(function() self:refreshRealtimeLists() end)
             end
         else
             -- no clock: fall back to accumulating dt (assumes dt in ms)
             self._rtAccum = (self._rtAccum or 0) + (dt or 0)
-            if self._rtAccum >= DistributionMenuPage.REALTIME_REFRESH_MS then
+            if self._rtAccum >= every * 1000 then
                 self._rtAccum = 0
                 pcall(function() self:refreshRealtimeLists() end)
             end
@@ -173,3 +384,6 @@ function DistributionMenuPage:update(dt)
         end
     end
 end
+
+-- FULL TEXT ON HOVER for any cell the layout cut short (TextTip.lua, 2026-09-29).
+if TextTip ~= nil and TextTip.install ~= nil then TextTip.install(DistributionMenuPage) end

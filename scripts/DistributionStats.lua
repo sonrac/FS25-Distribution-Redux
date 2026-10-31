@@ -237,7 +237,15 @@ local function heldOf(p, ft)
     -- Asked for on ANY pallet-spawner building, production or pen. It is returned SEPARATELY from the
     -- internal figure so the page can show "buffer + pad" rather than one lump whose meaning depends on
     -- what is where.
-    if SmartDistribution.palletLitresOf ~= nil then
+    -- ONE padSnapshot instead of palletLitresOf THEN palletCountOf: each of those walks the entire
+    -- vehicleSystem list with a getWorldTranslation per pallet, and this runs per (building, product) --
+    -- so on a farm with ~100 pallet-spawner buildings the pair was hundreds of thousands of world-transform
+    -- reads per refresh. Same two figures, half the scans, and memoised on top (see padSnapshot).
+    if SmartDistribution.padSnapshot ~= nil then
+        local ok, litres, count = pcall(SmartDistribution.padSnapshot, p, ft)
+        if ok and type(litres) == "number" then pallets = litres end
+        if ok and type(count)  == "number" then palletCount = count end
+    elseif SmartDistribution.palletLitresOf ~= nil then
         local ok, v = pcall(SmartDistribution.palletLitresOf, p, ft)
         if ok and type(v) == "number" then pallets = v end
     end
@@ -247,11 +255,11 @@ local function heldOf(p, ft)
         internal = internal - pallets
         if internal < 0 then internal = 0 end
     end
-    -- the COUNT is asked for separately rather than derived as pallets/1000: capacity differs by fill
-    -- type, and a part-filled pallet must still read as one pallet or it shows "(0p)" while standing
-    -- plainly on the pad. palletCountOf returns 0 for anything that is not a pallet-spawner asset, so
-    -- bulk rows are unchanged.
-    if SmartDistribution.palletCountOf ~= nil then
+    -- the COUNT is never derived as pallets/1000: capacity differs by fill type, and a part-filled pallet
+    -- must still read as one pallet or it shows "(0p)" while standing plainly on the pad. It comes back
+    -- from the same padSnapshot above (0 for anything that is not a pallet-spawner asset, so bulk rows are
+    -- unchanged); only the pre-padSnapshot fallback path needs its own call.
+    if SmartDistribution.padSnapshot == nil and SmartDistribution.palletCountOf ~= nil then
         local ok, v = pcall(SmartDistribution.palletCountOf, p, ft)
         if ok and type(v) == "number" then palletCount = v end
     end
@@ -267,10 +275,26 @@ local function enrolledAssetsWithUniqueNames()
     local kept, byName = {}, {}
     for _, a in ipairs(SmartDistribution.enumerateConfigurableAssets()) do
         local p = a.placeable
+        -- ONE ROW PER BUILDING, not per role. That enumerator now returns a row for each job a building
+        -- does (a DriveIn is a silo AND a pallet store AND a small production), which is what the
+        -- building TABS want -- but the Overview is a flow table, and roles do not change what flowed.
+        -- Without this filter the DriveIn would contribute its whole product list two or three times
+        -- over, and the " (n)" duplicate-name suffixing below would then split it into "Drive-In (1)"
+        -- and "Drive-In (2)" as though they were separate buildings.
         if p ~= nil and (SmartDistribution.isAssetEnrolled == nil or SmartDistribution.isAssetEnrolled(p)) then
+            -- ONE ROW SET PER ROLE, because a building that does two jobs really is two things worth
+            -- reading separately -- a DriveIn's silo half and its pallet store hold different products
+            -- and are configured independently, so collapsing them would hide half of it.
+            --
+            -- IDENTITY is the role uid (so the two halves never share settings or a selection), while
+            -- the FLOW lookup stays on the base uid: the ledger records what a BUILDING moved, and a
+            -- role uid would find nothing there. That works out cleanly because the roles hold different
+            -- product lists, so each row still only shows the fill types that belong to it.
             local e = {
                 placeable = p,
-                uid  = SmartDistribution.assetUid ~= nil and SmartDistribution.assetUid(p) or nil,
+                uid  = a.roleUid or (SmartDistribution.assetUid ~= nil and SmartDistribution.assetUid(p) or nil),
+                flowUid = SmartDistribution.assetUid ~= nil and SmartDistribution.assetUid(p) or nil,
+                role = a.role,
                 name = a.name or "?",
                 baseName = a.name or "?",     -- kept un-suffixed: this is what Grouping collapses on
                 origName = a.origName,
@@ -400,6 +424,9 @@ local function groupRows(rows, assets)
             -- capacity sums across the group, but only over buildings that HAVE one -- nil must survive
             -- as nil (unresolvable) rather than becoming a zero that reads as "holds nothing"
             if r.capacity ~= nil then g.capacity = (g.capacity or 0) + r.capacity end
+            -- REMAINING sums the same way and for the same reason: a group with no resolvable capacity
+            -- keeps nil rather than collapsing to a zero that would paint the row red.
+            if r.remaining ~= nil then g.remaining = (g.remaining or 0) + r.remaining end
             g.heldInternal = (g.heldInternal or 0) + (r.heldInternal or 0)
             g.heldPallets  = (g.heldPallets  or 0) + (r.heldPallets  or 0)
             g.heldPalletCount = (g.heldPalletCount or 0) + (r.heldPalletCount or 0)
@@ -449,7 +476,10 @@ function SmartDistribution.producibleProducts()
     local agg = (SmartDistribution.windowAggregate ~= nil) and SmartDistribution.windowAggregate("month") or {}
     for _, a in ipairs(SmartDistribution.enumerateConfigurableAssets()) do
         local p = a.placeable
-        if p ~= nil and (SmartDistribution.isAssetEnrolled == nil or SmartDistribution.isAssetEnrolled(p)) then
+        -- primary role only: a building's producible products are a property of the BUILDING, and
+        -- visiting it once per role would just do the same work two or three times
+        if p ~= nil and a.isPrimaryRole ~= false
+           and (SmartDistribution.isAssetEnrolled == nil or SmartDistribution.isAssetEnrolled(p)) then
             local pp = (SmartDistribution.productionPointOf ~= nil) and SmartDistribution.productionPointOf(p) or nil
             if pp ~= nil then
                 local ok, lines = pcall(SmartDistribution.productionLines, p)
@@ -677,19 +707,48 @@ local function capacityOf(p, ft, role, held)
         if uid ~= nil and SmartDistribution.isInputBlocked ~= nil and SmartDistribution.isInputBlocked(uid, ft) then
             return 0                                             -- blocked: it will take nothing
         end
-        if SmartDistribution.inputEffectiveMaxLiters ~= nil then
-            local ok, v = pcall(SmartDistribution.inputEffectiveMaxLiters, p, ft)
-            if ok and type(v) == "number" and v >= 0 and v < math.huge then
-                -- On a POOLED store, a product sitting over its even share makes inputEffectiveMaxLiters
-                -- return the held level itself ("the limit rises to match what is actually piled there").
-                -- Correct for the allocator, useless as a denominator -- every product of a multi-fruit
-                -- silo would read "58,597 (58,597)". Fall back to the silo's real capacity there.
-                if raw ~= nil and held ~= nil and v <= held + 0.5 and v < raw then return raw end
-                return v
+        -- MAX = this product's percentage of the building's capacity, the SAME figure the building tabs and
+        -- the Advanced Inputs dialog show. It used to be inputEffectiveMaxLiters, the ELASTIC "what could
+        -- still fit given what the others hold" -- which needed a special case here because on a pooled
+        -- store an over-share product makes it collapse to the held level, so every product of a
+        -- multi-fruit silo read "58,597 (58,597)". A percentage of a capacity cannot do that, so the
+        -- workaround goes with it. The elastic number now lives in the REMAINING column, where it belongs.
+        local cap = nil
+        if SmartDistribution.inputProductCapacity ~= nil then
+            local ok, c = pcall(SmartDistribution.inputProductCapacity, p, ft)
+            if ok and type(c) == "number" and c > 0 and c < math.huge then cap = c end
+        end
+        if cap ~= nil then
+            local pct = 100
+            if SmartDistribution.inputCapLiters ~= nil then
+                local ok, v = pcall(SmartDistribution.inputCapLiters, p, ft)
+                if ok and type(v) == "number" then pct = math.max(0, math.min(100, v)) end
             end
+            return cap * pct / 100
         end
     end
     return raw
+end
+
+-- REMAINING: how much more of this product the building can take.
+--   inputs  -> inputAcceptableLiters, exactly what the Advanced Inputs dialog's AVAILABLE column shows and
+--              what the allocator itself clamps every delivery to, so the two can never disagree
+--   outputs -> a straight capacity - held
+-- An (In/Out) silo uses the INPUT rule: it is the binding constraint on what can still arrive, and it is
+-- never looser than capacity - held. nil when nothing can be resolved, so the cell shows a dash rather than
+-- an invented figure.
+local function remainingOf(p, ft, role, held, capacity)
+    if p == nil or ft == nil then return nil end
+    if role == "In" or role == "In/Out" then
+        if SmartDistribution.inputAcceptableLiters ~= nil then
+            local ok, v = pcall(SmartDistribution.inputAcceptableLiters, p, ft)
+            if ok and type(v) == "number" and v == v and v >= 0 and v < math.huge then return v end
+        end
+    end
+    if type(capacity) == "number" and capacity > 0 and capacity < math.huge then
+        return math.max(0, capacity - (held or 0))
+    end
+    return nil
 end
 
 -- ---- advanced-settings view -------------------------------------------------
@@ -700,10 +759,19 @@ end
 --
 -- Computed only when the view is on (`withSettings`), and only for the SIDE a row actually plays: an
 -- input-only row never resolves output destinations, which is the expensive half.
-local function settingsFor(p, ft, role)
+-- `role` here is the IN/OUT TAG ("In" / "Out" / "In/Out"); `brole` is the BUILDING role ("SHED" /
+-- "PRODUCTION" / nil for the primary). They are different things and were being conflated -- the tag was
+-- passed to functions expecting a building role, producing `uid#in` keys nothing ever writes, so MAX IN
+-- and HELD OF MAX quietly read defaults on every building. brole is recovered from the row's own role
+-- uid (SmartDistribution.roleOfUid).
+local function settingsFor(p, ft, role, brole, window)
     if p == nil or ft == nil then return nil end
     local SD = SmartDistribution
-    local uid = (SD.assetUid ~= nil) and SD.assetUid(p) or nil
+    -- ONE key for every read below. It used to be the bare uid here while maxL / inHeld / targetL were
+    -- resolved from the tag -- three resolutions in one function, none of them agreeing on a multi-role
+    -- building.
+    local uid = (SD.settingUid ~= nil) and SD.settingUid(p, ft, brole) or nil
+    if uid == nil then uid = (SD.assetUid ~= nil) and SD.assetUid(p) or nil end
     local s = {}
     if role == "In" or role == "In/Out" then
         local pool = (SD.pooledInputCapacity ~= nil) and SD.pooledInputCapacity(p) or nil
@@ -711,13 +779,18 @@ local function settingsFor(p, ft, role)
             for _, f in ipairs(pool.fts) do if f == ft then s.pooled = true; break end end
         end
         s.blocked   = uid ~= nil and SD.isInputBlocked ~= nil and SD.isInputBlocked(uid, ft) or false
-        s.pct       = (SD.inputCapPct ~= nil) and SD.inputCapPct(p, ft) or nil
-        s.maxL      = (SD.inputEffectiveMaxLiters ~= nil) and SD.inputEffectiveMaxLiters(p, ft) or nil
-        s.inHeld    = (SD.inputHeldLevel ~= nil) and SD.inputHeldLevel(p, ft) or nil
-        s.explicit  = uid ~= nil and SD.hasExplicitInputCapPct ~= nil and SD.hasExplicitInputCapPct(uid, ft) or false
-        s.targetPct = uid ~= nil and SD.getInputTargetPct ~= nil and SD.getInputTargetPct(uid, ft) or nil
-        s.targetL   = (SD.inputTargetLiters ~= nil) and SD.inputTargetLiters(p, ft) or nil
-        s.inStatus  = uid ~= nil and SD.inputLinkStatus ~= nil and SD.inputLinkStatus(uid, ft) or nil
+        s.capL      = (SD.inputCapLiters ~= nil) and SD.inputCapLiters(p, ft, brole) or nil
+        -- with the ROLE: the Overview's settings view has a row per sub-building, and without it a pallet
+        -- store's row reported the silo's ceiling and held (the same fault as the building tab's FREE
+        -- STORAGE cell). settingsFor already carries the role -- it just was not passing it on.
+        s.maxL      = (SD.inputEffectiveMaxLiters ~= nil) and SD.inputEffectiveMaxLiters(p, ft, brole) or nil
+        s.inHeld    = (SD.inputHeldLevel ~= nil) and SD.inputHeldLevel(p, ft, brole) or nil
+        s.explicit  = uid ~= nil and SD.hasExplicitInputCap ~= nil and SD.hasExplicitInputCap(uid, ft) or false
+        -- nil (rendered "-") on a push-only receiver: a fill target there would only duplicate Max in %.
+    local tgtOk = (SD.fillTargetApplies == nil) or SD.fillTargetApplies(p, ft, brole)
+    s.targetL2  = tgtOk and uid ~= nil and SD.getInputTargetStored ~= nil and SD.getInputTargetStored(uid, ft) or nil
+        s.targetL   = tgtOk and (SD.inputTargetLiters ~= nil) and SD.inputTargetLiters(p, ft, brole) or nil
+        s.inStatus  = uid ~= nil and SD.inputLinkStatus ~= nil and SD.inputLinkStatus(uid, ft, window) or nil
         -- drives the "nearing the cap" highlight. Measured against maxL (the EFFECTIVE ceiling the
         -- allocator enforces), not the raw tank, so it means the same thing the Advanced Inputs dialog does.
         if type(s.maxL) == "number" and s.maxL > 0 and type(s.inHeld) == "number" then
@@ -730,16 +803,20 @@ local function settingsFor(p, ft, role)
         local pr   = (SD.control ~= nil) and SD.control.priority or nil
         local list = (pr ~= nil and uid ~= nil and pr[uid] ~= nil) and pr[uid][ft] or nil
         s.ranked = (type(list) == "table") and #list or 0
-        -- outputDestinationsForMode returns the destinations relevant to this product's CURRENT mode, each
-        -- carrying .blocked, and deliberately mirrors DistributionAdvancedDialog -- so "3/5" here is the
-        -- same set of destinations the Advanced Outputs dialog lists, not a second opinion.
+        -- outputDestinationsForMode returns the destinations relevant to this product's CURRENT mode,
+        -- and deliberately mirrors DistributionAdvancedDialog -- so "3/5" here is the same set of
+        -- destinations the Advanced Outputs dialog lists, not a second opinion.
+        --
+        -- REFUSED, not blocked. A destination that has blocked the product on its own INPUT side will
+        -- take nothing, and counting it among the active ones made "0 of N" -- the silent-stall signal
+        -- this column exists for (5.37) -- unreachable for the commonest way of stalling a building.
         local dests = (SD.outputDestinationsForMode ~= nil) and SD.outputDestinationsForMode(p, ft) or nil
         if type(dests) == "table" then
             local n = 0
-            for _, d in ipairs(dests) do if not d.blocked then n = n + 1 end end
+            for _, d in ipairs(dests) do if not d.refused then n = n + 1 end end
             s.destTotal, s.destActive = #dests, n
         end
-        s.outStatus = (SD.outputLinkStatus ~= nil) and SD.outputLinkStatus(p, ft) or nil
+        s.outStatus = (SD.outputLinkStatus ~= nil) and SD.outputLinkStatus(p, ft, window) or nil
         -- "1/4" -- lines SWITCHED ON that make this product, of all lines that could. Nil for anything
         -- with no production lines (silo, pen, market), which the page renders as a dash.
         if SD.outputLineCounts ~= nil then s.lineOn, s.lineTotal = SD.outputLineCounts(p, ft) end
@@ -747,15 +824,53 @@ local function settingsFor(p, ft, role)
         -- the v-mode enum (Keep / Distribute / ...), everything else on the asset MODE enum. Pallet-aware,
         -- so a coop's EGG row reads "Hold Pallets" where its MANURE row reads "Hold" (5.22).
         local pp = (SD.productionPointOf ~= nil) and SD.productionPointOf(p) or nil
-        if pp ~= nil and SD.productionOutputVMode ~= nil and SD.productionOutputVModeName ~= nil then
+        -- usesVMode, NOT `pp ~= nil`: a pass-through store has a production point but its TANK products
+        -- run on the asset mode, and resolving a v-mode they do not have reported plain Distribute.
+        if pp ~= nil and (SD.usesVMode == nil or SD.usesVMode(p, ft))
+           and SD.productionOutputVMode ~= nil and SD.productionOutputVModeName ~= nil then
             local v = SD.productionOutputVMode(pp, ft)
             s.mode = (v ~= nil) and SD.productionOutputVModeName(v) or nil
         elseif SD.modeName ~= nil and SD.resolvedAssetMode ~= nil then
             local pal = (SD.holdLabelFlag ~= nil) and SD.holdLabelFlag(p, ft) or nil
-            s.mode = SD.modeName(SD.resolvedAssetMode(p, ft), pal)
+            s.mode = SD.modeName(SD.resolvedAssetMode(p, ft, brole), pal)
         end
         s.isOut = true
     end
+    return s
+end
+
+-- LAZY per-row settings: resolved on FIRST DISPLAY, then cached on the row.
+--
+-- settingsFor is the single most expensive thing on the Overview: for an input row it runs sourcesFor and
+-- for an output row outputDestinationsForMode, and BOTH walk the entire placeableSystem. Computing it
+-- eagerly for every row made opening the tab O(rows x placeables) -- and every row is a distinct
+-- (uid, ft), so the memos cannot help WITHIN one enumeration; every lookup is a miss by construction.
+--
+-- MEASURED with sdStressBig: 6,331 rows cost 6,237 ms to enumerate with settings on, against 112 ms for
+-- the same farm's flow view. The list shows ~15 rows at a time, so the overwhelming majority of that work
+-- was for rows the player never looked at.
+--
+-- Deferring it makes the OPEN proportional to what is on screen instead of to the whole farm. The work is
+-- not free -- it moves into the cell populate, so scrolling onto fresh rows pays it -- but each row pays
+-- once and then caches, and the populate profiler in DistributionOverviewPage reports the per-cell cost.
+--
+-- `false` is stored for a row that legitimately has no settings, so a nil result is not recomputed on
+-- every repopulate (the settings list repopulates on every menu refresh).
+function SmartDistribution.rowSettings(row, window)
+    if row == nil then return nil end
+    local s = row.settings
+    -- the cache is keyed by WINDOW as well: the two STATUS columns are now windowed, so a row resolved
+    -- under Hour must not be reused when the player switches to Month.
+    if s ~= nil and row.settingsWindow == window then
+        if s == false then return nil end
+        return s
+    end
+    if row.placeable == nil or row.ft == nil or row.role == nil then
+        row.settings, row.settingsWindow = false, window
+        return nil
+    end
+    s = settingsFor(row.placeable, row.ft, row.role, SmartDistribution.roleOfUid(row.uid), window)
+    row.settings, row.settingsWindow = s or false, window
     return s
 end
 
@@ -779,15 +894,41 @@ function SmartDistribution.overviewRows(window, grouped, chainFt, withSettings)
     local assets = enrolledAssetsWithUniqueNames()
     for _, a in ipairs(assets) do
         local p, uid = a.placeable, a.uid
-        local byFt = uid ~= nil and agg[uid] or nil
+        -- A SECONDARY ROLE ROW READS ITS OWN KEY, not the building's. flowUid is the base uid, and using
+        -- it for every role meant one building's flows were echoed on all of its rows -- fine while each
+        -- role held a different product list (6.18's stated assumption), but a DriveIn holds EGG in its
+        -- tank AND in its pallet store, so one internal move read 1 kL on both rows.
+        -- The primary row keeps the base key, so single-role buildings and every existing flow are
+        -- untouched; only a role-attributed figure reaches a secondary row.
+        local flowKey = (uid ~= nil and uid ~= a.flowUid) and uid or (a.flowUid or uid)
+        local byFt = flowKey ~= nil and agg[flowKey] or nil
         local icon = SmartDistribution.assetIconFile ~= nil and SmartDistribution.assetIconFile(p) or nil
         local expCons, expProd = expectedFlows(p, window)      -- resolved once per building, not per row
         local ins, outs, kind   = roleSets(p)
+        -- SCOPE THE PRODUCTS TO THIS HALF of the building. candidateFillTypes and roleSets both answer
+        -- for the PLACEABLE, so without this every role row of a DriveIn listed the same products --
+        -- its silo, pallet store and production rows all showed milk and bottled milk, which only the
+        -- silo holds. nil for a single-role building, so nothing else is touched.
+        local roleFts = (SmartDistribution.roleFillTypeSet ~= nil)
+            and SmartDistribution.roleFillTypeSet(p, a.role) or nil
         for ft in pairs(candidateFillTypes(p, byFt)) do
+          if roleFts == nil or roleFts[ft] then
             local e = byFt ~= nil and byFt[ft] or nil
             local function v(field) return (e ~= nil and e[field]) or 0 end
             local held, heldInternal, heldPallets, heldPalletCount = heldOf(p, ft)
             local roleTag = roleLabel(ft, ins, outs, kind)
+            -- A folded silo EXTENSION contributes SPACE, never PRODUCTS (5.54). roleLabel gives a
+            -- storage-kind building "In/Out" for EVERY candidate fill type, and candidateFillTypes seeds
+            -- itself from the LEDGER as well as the supported set -- so a product DR moved there before
+            -- this was fixed keeps its row for as long as that history is in the window, and in the
+            -- settings view (which deliberately keeps every in/out row regardless of activity) it would
+            -- never age out at all. isExtensionOnlyFillType is nil-guarded and false for any building
+            -- with no folded extension, so no other tab or building kind is touched.
+            if roleTag ~= nil and SmartDistribution.isExtensionOnlyFillType ~= nil
+               and SmartDistribution.isExtensionOnlyFillType(p, ft) then
+                roleTag = nil
+            end
+            local rowCap  = capacityOf(p, ft, roleTag, held)   -- resolved once: REMAINING is derived from it
             local row = {
                 -- carried for the row double-click (jump to this building's tab). groupRows copies every
                 -- field from the FIRST row of a group, so a grouped row lands on one of its buildings
@@ -798,7 +939,8 @@ function SmartDistribution.overviewRows(window, grouped, chainFt, withSettings)
                 assetOrigName = a.origName, assetIcon = icon,
                 product = fillTypeTitle(ft), productIcon = fillTypeIcon(ft),
                 role = roleTag, assetKind = kind,
-                capacity = capacityOf(p, ft, roleTag, held),
+                capacity = rowCap,
+                remaining = remainingOf(p, ft, roleTag, held, rowCap),
                 received = v("received"), loaded   = v("loaded"),
                 consumed = v("consumed"), unloaded = v("unloaded"),
                 held = held, heldInternal = heldInternal, heldPallets = heldPallets,
@@ -809,7 +951,9 @@ function SmartDistribution.overviewRows(window, grouped, chainFt, withSettings)
                 -- nil (not 0) when there is no recipe expectation, so the page knows to leave the cell
                 -- plain rather than painting a row red for a building that simply has no target
                 consumedExpected = expCons[ft], producedExpected = expProd[ft],
-                settings = withSettings and settingsFor(p, ft, roleTag) or nil,
+                -- settings are resolved LAZILY -- see SmartDistribution.rowSettings. Computing them here
+                -- cost one full placeableSystem walk PER ROW (sourcesFor / outputDestinationsForMode) for
+                -- rows the player may never scroll to, which is what made opening the tab expensive.
             }
             -- SETTINGS VIEW: keep EVERY input and output the building has, whether or not anything moved.
             -- A cap, reserve or block set on a product that has not arrived yet is exactly what that view
@@ -827,6 +971,7 @@ function SmartDistribution.overviewRows(window, grouped, chainFt, withSettings)
                 local l = rowsByFt[ft]; if l == nil then l = {}; rowsByFt[ft] = l end
                 l[#l + 1] = row
             end
+          end
         end
     end
 
@@ -873,4 +1018,43 @@ function SmartDistribution.overviewRows(window, grouped, chainFt, withSettings)
         return tostring(x.product) < tostring(y.product)
     end)
     return rows
+end
+
+-- ---------------------------------------------------------------------------
+-- FREEZE THE MEMO CLOCK FOR ONE ENUMERATION.
+--
+-- Every memo in SmartDistribution.lua checks its TTL against SmartDistribution.memoNow(). Left as live
+-- wall-clock, an enumeration that takes longer than the TTL expires its OWN earlier entries before the
+-- later rows ask for them, and the next pass finds them stale too -- so the cache switched itself off at
+-- exactly the farm size that needed it. Measured with sdStressBig: 1,767 rows went 1041 ms cold -> 66.8 ms
+-- warm, while 3,267 rows went 3085 ms -> 3160 ms, i.e. no benefit at all once the pass outran
+-- DEST_MEMO_TTL (3.0 s).
+--
+-- Nothing mutates during a menu read, so one answer is valid for the whole pass by construction. Entries
+-- are stamped with the FROZEN value, so they age from the start of the pass in real time afterwards and a
+-- pass cannot mint entries that look artificially fresh to the next one.
+--
+-- Wrapped rather than edited inline because overviewRows has several exit paths, and the clock must be
+-- restored on every one -- the same reason runHourly is wrapped for _selfWrite (5.8). `prev` is restored
+-- rather than nil'd so a nested call (there is none today) could not clear an outer pass's clock.
+SmartDistribution._overviewRowsInner = SmartDistribution.overviewRows
+function SmartDistribution.overviewRows(window, grouped, chainFt, withSettings)
+    -- STRUCTURAL DRIFT, signalled rather than waited out. The destination/source memos are correct because
+    -- everything that changes their ANSWER bumps the epoch; the TTL only ever covered the one thing nothing
+    -- signals -- a building placed or demolished. Checking the placeable count here, once per enumeration
+    -- and O(1), signals exactly that -- which is what lets DEST_MEMO_TTL be long enough to survive a slow
+    -- pass without a newly built shed being invisible until it expires.
+    local ps = g_currentMission ~= nil and g_currentMission.placeableSystem or nil
+    local n  = (ps ~= nil and type(ps.placeables) == "table") and #ps.placeables or 0
+    if n ~= SmartDistribution._memoPlaceableCount then
+        SmartDistribution._memoPlaceableCount = n
+        if SmartDistribution.invalidateMenuMemos ~= nil then SmartDistribution.invalidateMenuMemos() end
+    end
+
+    local prev = SmartDistribution._memoNow
+    SmartDistribution._memoNow = (getTimeSec ~= nil) and getTimeSec() or nil
+    local ok, res = pcall(SmartDistribution._overviewRowsInner, window, grouped, chainFt, withSettings)
+    SmartDistribution._memoNow = prev
+    if not ok then error(res, 0) end
+    return res
 end

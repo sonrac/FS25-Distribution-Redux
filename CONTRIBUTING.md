@@ -96,6 +96,8 @@ Run these from the repository root, or use `make -C /path/to/repository`.
 | `make test` | Lua behavior tests and Bats validator tests |
 | `make test-lua` | Lua behavior tests only |
 | `make test-bats` | Bash validator tests only |
+| `make test-localization` | Localization contracts and checker regression tests |
+| `make check-localization-keys` | Report every missing English key per locale |
 | `make lint` | ShellCheck, actionlint and zizmor |
 | `make lint-shell` | Shared Bash scripts and Bats tests |
 | `make lint-actions` | Both workflow linters |
@@ -107,15 +109,19 @@ Missing tools or a failed check cause a nonzero exit status; no checks are
 silently skipped. Executables can be overridden through `BATS`, `ACTIONLINT`,
 `ZIZMOR` and `SHELLCHECK` Make variables.
 
-The workflow `.github/workflows/quality.yml` runs on pushes, pull requests and
-manual dispatch. Six independent matrix jobs run `validate`, `test-lua`, `test-bats`,
-`lint-shell`, `lint-actionlint` and `lint-zizmor` in parallel. Each installs only
+The workflow `.github/workflows/quality.yml` runs on pushes to `main`, pull requests and
+manual dispatch. Eight independent matrix jobs run `validate`, `test-lua`, `test-bats`,
+`test-localization`, `check-localization-keys`, `lint-shell`, `lint-actionlint` and `lint-zizmor` in parallel. Each installs only
 its dependencies through `.github/scripts/install-ci-tools.sh`; `fail-fast: false`
-keeps other jobs running after a failure. CI uses native Ubuntu tools to avoid
-building the same Docker image six times. Local Docker checks use the same Make
+keeps other jobs running after a failure. An additional independent job checks all localization lengths. CI uses native Ubuntu tools to avoid
+building the same Docker image for each job. Local Docker checks use the same Make
 targets. The checkout
 action is pinned to a full commit SHA with credential persistence disabled;
 workflow permissions are limited to reading repository contents.
+Feature-branch pushes do not trigger a second run alongside `pull_request`.
+Each PR update runs one set of checks; merging into `main` runs one set for the
+resulting push. Manual dispatch remains available. Concurrency cancels stale
+runs for the same PR or branch when a newer update arrives.
 
 Zizmor runs with `--offline --pedantic`: local workflow security checks require
 no GitHub token or network access. Audits requiring GitHub API access are not
@@ -164,6 +170,13 @@ ownership and unauthorized requests. Document anything you could not verify.
    and any required in-game verification. Include reproduction steps for bugs.
 
 Translation contributors should follow the translation guidance in `README.md`.
+Agent guidance is available in `.agents/skills/fs25-localization/SKILL.md`.
+`tests/localization.bats` checks shared English formatting and structural
+contracts across all locales, allowing missing keys and extra legacy keys.
+Completeness is checked separately by `make check-localization-keys` and its
+independent CI job. Every locale is compared with English, all missing keys are
+reported, and incomplete locales fail that check. Runtime English fallback
+remains supported. Extra legacy keys do not compensate for missing keys.
 Keep localization key names unchanged; missing translated entries fall back to
 English. Development files (`tests/`, `.github/`, `.local/`, Makefile and docs)
 are not mod runtime assets and should not be included in the game ZIP.
@@ -191,7 +204,7 @@ latest upstream commit. Run this on the host, outside the read-only check contai
 
 ## Parallel checks
 
-`make check` runs the six check types concurrently with grouped output. Set
+`make check` runs the seven check types concurrently with grouped output. Set
 `CHECK_JOBS=2` to reduce CPU/memory pressure, or `CHECK_JOBS=1` for sequential
 execution. Docker's default command uses the same parallel entry point; pass
 `make check CHECK_JOBS=2` after the image name to override it. Tests use separate
@@ -200,6 +213,32 @@ temporary fixtures and do not write to the checkout.
 `tests/ci_tools.bats` covers CI dependency selection, selective linter downloads,
 checksum failure handling and propagated installation failures using command
 stubs; it never installs packages or downloads tools. Add regression coverage
-there when changing CI installation behavior. `make test-bats` discovers all
-`tests/*.bats` suites. Run `make lint-actionlint` and `make lint-zizmor`
+there when changing CI installation behavior. `make test-bats` discovers
+`tests/*.bats` except `tests/localization*.bats`, which run through
+`make test-localization` in an independent CI job. Localization failures do not
+fail `make test` or the general Bats job. `make check` and Docker still run all
+suites and report their failures. Run `make lint-actionlint` and `make lint-zizmor`
 independently when diagnosing workflow issues.
+
+## Localization length checks
+
+Run `make check-localization` (or append `LUA=luajit`) to check every
+`translations/translation_*.xml`, including English. The independent
+**Localization limits (all languages)** CI job runs the same target and reports
+all failures in its check step. It does not stop at the first file or phrase.
+This target is also included in `make check` and Docker checks.
+
+Each `LIMIT` line contains the filename, localization key, actual Unicode
+character count, allowed count and full phrase. For formatted routing labels,
+it also prints the rendered sample using that locale's units and Off label
+(with English fallback). Output order is deterministic. Invalid XML and format
+errors are reported while other files continue to be checked. Any violation or
+parsing error fails the command; existing violations are not silently exempted.
+
+The budgets in `tests/check_localization_limits.lua` come from the English
+localization comments. They are approximate character budgets, not pixel-width
+measurements. Keys without a declared numeric budget are not length-gated, and
+partial translations may omit keys. Formatting samples cannot guarantee that
+arbitrarily long runtime names or volumes fit. XML parsing is delegated to
+XMLStarlet; all extracted labels are checked in a single Lua process. Tests in
+`tests/localization_limits.bats` cover the reporting and failure behavior.

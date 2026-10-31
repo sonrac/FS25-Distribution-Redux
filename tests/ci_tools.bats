@@ -32,8 +32,11 @@ SH
         esac
     done <<'TARGETS'
 validate|lua5.1 xmlstarlet
+check-localization|lua5.1 xmlstarlet
+check-localization-keys|xmlstarlet
 test-lua|lua5.1
 test-bats|lua5.1 xmlstarlet bats
+test-localization|lua5.1 xmlstarlet bats
 lint-shell|shellcheck
 lint-actionlint|shellcheck curl ca-certificates
 lint-zizmor|curl ca-certificates

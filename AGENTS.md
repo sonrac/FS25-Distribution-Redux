@@ -1,6 +1,7 @@
 # Agent instructions
 
 - Write documentation in English. See `CONTRIBUTING.md` for setup and commands.
+- For translation changes or reviews, use [.agents/skills/fs25-localization/SKILL.md](.agents/skills/fs25-localization/SKILL.md). Preserve localization `name` keys; translate only `text` values within the requested languages.
 - Run all checks with `make docker-check` (preferred, Docker required), or `make check LUA=luajit` with native tools. Use `make test-lua`, `make test-bats`, and `make lint` for focused checks; pass `LUA=luajit` when Lua 5.1 is unavailable.
 - CI changes must add or update regression tests covering the changed behavior. Keep workflow `run:` blocks short: put logic in `.github/scripts/*.sh` and test those scripts with Bats.
 - For functionality changes, add or update relevant Lua regression tests, run the affected tests, then the full checks. Report any required FS25 gameplay or multiplayer checks that were not run; test doubles do not replace the engine.

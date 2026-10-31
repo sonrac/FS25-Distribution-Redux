@@ -5,8 +5,10 @@ set -euo pipefail
 linter=''
 case $1 in
     validate) packages=(lua5.1 xmlstarlet) ;;
+    check-localization) packages=(lua5.1 xmlstarlet) ;;
+    check-localization-keys) packages=(xmlstarlet) ;;
     test-lua) packages=(lua5.1) ;;
-    test-bats) packages=(lua5.1 xmlstarlet bats) ;;
+    test-bats|test-localization) packages=(lua5.1 xmlstarlet bats) ;;
     lint-shell) packages=(shellcheck) ;;
     lint-actionlint) packages=(shellcheck curl ca-certificates); linter=actionlint ;;
     lint-zizmor) packages=(curl ca-certificates); linter=zizmor ;;

@@ -70,3 +70,28 @@ About the User Guide (the dr_guide_ keys)
 - Each key is one paragraph. A value starting "## ", "### " or "- " is a heading, a sub-heading or a
   bullet: that marker is STRUCTURE, not words, so keep it exactly and translate only what follows.
 - Do not renumber the keys. The numbers are positions in the guide.
+
+## Code quality checks
+
+GitHub Actions runs `.github/workflows/quality.yml` on every push and pull request,
+and supports manual runs from the Actions tab. Run the same checks locally with
+Python 3 and Lua 5.1:
+
+```sh
+python3 tools/check_mod.py --lua lua5.1
+```
+
+LuaJIT is also supported for local checks (`--lua luajit`). CI uses Lua 5.1,
+matching the compatibility target in `.luarc.json`.
+
+Checks cover:
+
+- Compilation of every Lua file under `scripts/`, without executing mod code.
+- XML parsing of `modDesc.xml`, GUI files and translations.
+- Mod version format, icon, source-file references, duplicate source entries,
+  and the English localization file declared in `modDesc.xml`.
+- Translation structure, required attributes, duplicate keys, and English keys
+  referenced by GUI `$l10n_` attributes. Partial translations remain valid.
+
+Any error fails the job. These are static checks, not a full Lua linter or a
+GIANTS XML schema validator; gameplay and multiplayer still need testing in FS25.
